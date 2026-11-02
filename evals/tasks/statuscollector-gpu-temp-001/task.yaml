@@ -1,0 +1,23 @@
+id: statuscollector-gpu-temp-001
+repo: lioilsources/status-collector
+commit: 7521f943bb9c468ba207ae469c14084b6088029d
+fix: 955f056eee27d05910d0edfba80c6e8193a025bf
+lang: go
+prompt: |
+    Status page grafuje teploty strojů z node_exporteru (internal/host), ale GPU na SPARKu v nich chybí, protože node_exporter o GPU neví.
+
+    Na SPARKu bude skript přes textfile collector zapisovat metriku `node_gpu_temp_celsius` do souboru `gpu.prom`. Přidej do NodeExporter sampleru třetí senzor `TempGPU = "gpu"` (vedle zóny a NVMe, nejteplejší GPU). Když je `gpu.prom` podle `node_textfile_mtime_seconds` starší než 5 minut vůči `node_time_seconds` exportéru, hodnotu zahoď, ať mrtvý timer vypadá jako díra v grafu, ne jako zamrzlá hodnota. Skript a timer pro SPARK (deploy/spark/) přidej taky.
+test_cmd: go test ./internal/host -run '^(TestNodeExporterGPUTemp)$'
+test_files:
+    - internal/host/host_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: holdout

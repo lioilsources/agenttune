@@ -1,0 +1,28 @@
+id: aistack-portal-save-name-001
+repo: lioilsources/AiStack
+commit: cbd6eab11e1b3b1343aa30da8473e3b1f8c395b6
+fix: bf482fb02a9e44241b6dfa98abdf1dd90aed098f
+lang: go
+dir: services/gen-queue
+prompt: |
+    V gen-queue (services/gen-queue) proxy pro ComfyUI Portal pouští POST /cpe/workflow/save do ComfyUI bez kontroly pole `name`. Upstream z něj skládá cestu k souboru, takže `../../x` zapíše mimo složku workflow.
+
+    Uprav portal proxy (internal/portal), aby `name` bylo jen holé jméno souboru:
+    - chybějící `name` je v pořádku a tělo jde do ComfyUI beze změny,
+    - prázdné jméno, jméno se `/`, `\`, NUL nebo s tečkou na začátku vrátí 400 a do ComfyUI se nic nepošle,
+    - nevalidní JSON vrátí 400.
+    Platné požadavky musí dojít do ComfyUI s původním tělem bajt po bajtu.
+test_cmd: go test ./internal/portal -run '^(TestSaveName)$'
+test_files:
+    - services/gen-queue/internal/portal/portal_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev
