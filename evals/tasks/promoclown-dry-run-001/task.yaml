@@ -1,0 +1,29 @@
+id: promoclown-dry-run-001
+repo: lioilsources/PromoClown
+commit: e7f76bc27550747c783741ecdefa429c89207ac4
+fix: 85124aa48d9d78e44cbea2ee2288ae185da26848
+lang: go
+prompt: |
+    `promo-tribute run --dry-run` dnes tributy claimne a vrátí je s chybou „dry run, nothing rendered“, takže skončí jako failed a agentní token je nevrátí. Dry run nesmí na frontě nic změnit.
+
+    Uprav cmd/promo-tribute tak, aby dry run:
+    - jen načetl frontu přes jediný GET /tributes?status=queued (API ji vrací od nejnovějšího),
+    - seřadil ji od nejstaršího, jak by ji bral skutečný běh, a respektoval --max a --variants,
+    - vypsal na stdout jeden řádek na tribut ve tvaru `#<id> <credit> → <styl>, <styl>, …` (tolik stylů, kolik je variant),
+    - na stderr napsal, že fronta zůstala netknutá (text obsahuje „queue untouched“),
+    - nikdy nevolal claim ani done.
+    Skutečný běh (bez --dry-run) se nemění: claim, done, žádný výpis fronty. `run(ctx, args, stdout, stderr) int` zůstává vstupním bodem.
+test_cmd: go test ./cmd/promo-tribute -run '^(TestDryRunDoesNotTouchQueue|TestDryRunRespectsMax|TestRunClaimsAndRecordsFailure)$'
+test_files:
+    - cmd/promo-tribute/main_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev
