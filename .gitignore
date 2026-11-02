@@ -1,0 +1,9 @@
+data/raw/
+data/out/
+models/
+evals/results/*.jsonl
+.venv/
+data/REVIEW.md
+data/config.private.yaml
+rules.md
+evals/results/
