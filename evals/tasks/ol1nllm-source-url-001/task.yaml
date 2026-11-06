@@ -1,0 +1,28 @@
+id: ol1nllm-source-url-001
+repo: lioilsources/Ol1nLLM
+commit: 030d5c74da018d0435bb4db5c9e664ae3a254448
+fix: 9c9ad16add7076808166f4451be6b32ea5a06779
+lang: flutter
+prompt: |
+    Persona Leads 📈 (LeadsRAG) posílá u každého zdroje v terminálním SSE rámci pole `url` s odkazem na smlouvu v Registru smluv (`https://smlouvy.gov.cz/smlouva/<id>`). Appka ho zahazuje; chci ho v detailu zdroje nabídnout jako odkaz na originál.
+
+    V `LibrarySource` (lib/models/library_source.dart):
+    - nové nepovinné pole `String? url` (pojmenovaný parametr konstruktoru), které `fromJson` čte z klíče `url` stejně tolerantně jako ostatní texty (prázdný nebo jen mezery → `null`),
+    - `toJson` klíč `url` zapíše jen když není null, takže JSON bez url vypadá přesně jako dřív a staré uložené odpovědi (bez `url`) se načtou beze změny; round-trip `toJson` → `fromJson` url zachová,
+    - getter `Uri? get openableUrl`: vrátí naparsované URL jen pro schéma `http`/`https` (bez ohledu na velikost písmen) s neprázdným hostem; cokoli jiného (`javascript:`, `file:`, `intent:`, `tel:`, adresa bez schématu, `https://` bez hostu, nenaparsovatelný text) → `null`.
+
+    V lib/widgets/source_list.dart přidej veřejný widget `OriginalLink({required Uri uri})`: řádek s textem přesně `Otevřít originál` a vedle něj samostatný text s hostem (`uri.host`, např. `smlouvy.gov.cz`); klepnutí otevře URL v externím prohlížeči přes `url_launcher` (už je v pubspec), a když to nejde, ukáže SnackBar. Bottom sheet s detailem zdroje v `SourceList` ho zobrazí, jen když `openableUrl` není null; bez url (Knihovník, Právník) vypadá sheet jako dřív. Parsování SSE (`LibraryChatService.parseSseLine`, `LibrarySource.listFrom`) a fixtury v test/fixtures se nemění.
+test_cmd: flutter test test/leads_sse_parse_test.dart test/library_source_url_test.dart
+test_files:
+    - test/leads_sse_parse_test.dart
+    - test/library_source_url_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: dev

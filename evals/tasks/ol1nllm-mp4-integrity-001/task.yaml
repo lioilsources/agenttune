@@ -1,0 +1,26 @@
+id: ol1nllm-mp4-integrity-001
+repo: lioilsources/Ol1nLLM
+commit: 79c46f591da9db5b7672baeece53d4647ae844bc
+fix: 6f127e5ad529ef91e39fa9af1bd32eea5162bfe1
+lang: flutter
+prompt: |
+    Některá vygenerovaná videa se nepodaří uložit do Fotek („unsupported format“), i když se v appce přehrají. Nejspíš jde o uříznuté stažení: HTTP 200 projde, mp4 s `moov` vpředu se přehraje, ale PhotoKit ho odmítne. Chci stažený soubor před použitím zkontrolovat.
+
+    V lib/services/video_service.dart přidej top-level funkci `bool mp4LooksComplete(Uint8List bytes, int? declaredLength)`:
+    - když je `declaredLength` známá (content-length) a nesouhlasí s délkou `bytes`, vrátí `false`,
+    - projde top-level MP4 atomy (4 B velikost big-endian + 4 B typ; velikost 1 = 64bitová velikost v dalších 8 B, velikost 0 = atom do konce souboru) a vrátí `true` jen když atomy přesně vyplní celý soubor a mezi nimi jsou `ftyp`, `moov` i `mdat`,
+    - uříznutý poslední atom, atom s nesmyslnou velikostí nebo soubor bez `moov` → `false`.
+    `VideoService` po stažení výsledku (`/jobs/<id>/result`) soubor touto funkcí ověří proti hlavičce `content-length`; neúplný stáhne nejvýš jednou znovu a když ani druhý pokus neprojde, skončí jako přerušené stažení (`GenInterrupted`), ne jako hotové video. Hláška při neúspěšném uložení do Fotek (lib/screens/video_player_screen.dart) ať obsahuje kód chyby (`GalException.type.name`, jinak typ výjimky). Ostatní stavy generování videa se nemění.
+test_cmd: flutter test test/video_mp4_integrity_test.dart
+test_files:
+    - test/video_mp4_integrity_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: dev

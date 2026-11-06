@@ -1,0 +1,27 @@
+id: partycockpit-sdnotify-001
+repo: lioilsources/PartyCockpit
+commit: 8b08d08946ca7ec3eea9b809e398468249584eaa
+fix: c9311865ebfac1df2bfd0444228da1bfd15d64f1
+lang: go
+dir: backend
+prompt: |
+    Backend PartyCockpit poběží na party boxu jako systemd služba s `Type=notify` a `WatchdogSec`. Potřebuju, aby systemdu sám řekl, že je připravený, a krmil watchdog, dokud je zdravý — bez nové závislosti.
+
+    Přidej balíček backend/internal/sdnotify, který mluví protokolem sd_notify(3):
+    - `func Notify(state string) error` pošle jeden řádek stavu (např. `READY=1`, `WATCHDOG=1`) jako jeden datagram na unixgram socket z proměnné `NOTIFY_SOCKET`; adresa začínající `@` je abstraktní socket. Bez `NOTIFY_SOCKET` je to no-op a vrací nil,
+    - `func Watchdog(ctx context.Context, healthy func(context.Context) bool)` čte `WATCHDOG_USEC`; když chybí, je neplatné nebo není `NOTIFY_SOCKET`, hned skončí. Jinak v polovičním intervalu volá `healthy` a při true pošle `WATCHDOG=1`; skončí se zrušením ctx.
+    V cmd/partycockpit pak pošli `READY=1`, až server poslouchá, a pusť Watchdog s kontrolou, že odpovídá databáze. Žádná nová závislost v go.mod.
+test_cmd: go test ./internal/sdnotify -run '^(TestNotifyAndWatchdog)$'
+test_files:
+    - backend/internal/sdnotify/sdnotify_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev
