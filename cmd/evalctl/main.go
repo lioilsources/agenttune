@@ -206,13 +206,13 @@ func cmdDraft(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("list files: %w", err)
 	}
-	var mods []string
+	var manifests []string
 	for _, f := range strings.Split(string(tree), "\n") {
-		if path.Base(f) == "go.mod" {
-			mods = append(mods, path.Dir(f))
+		if b := path.Base(f); b == "go.mod" || b == "pubspec.yaml" {
+			manifests = append(manifests, f)
 		}
 	}
-	t, err := draft(*c, *repo, *id, task.Split(*split), stripTrailers(string(body)), mods)
+	t, err := draft(*c, *repo, *id, task.Split(*split), stripTrailers(string(body)), manifests)
 	if err != nil {
 		return err
 	}
@@ -248,10 +248,44 @@ func moduleOf(file string, mods []string) (string, bool) {
 	return best, found
 }
 
+// rootsOf returns the dirs of the manifests named base (go.mod, pubspec.yaml).
+func rootsOf(manifests []string, base string) []string {
+	var dirs []string
+	for _, m := range manifests {
+		if path.Base(m) == base {
+			dirs = append(dirs, path.Dir(m))
+		}
+	}
+	return dirs
+}
+
+// projectOf finds the single project dir (Go module or Flutter package) holding all
+// test files and returns it with the test paths relative to it.
+func projectOf(files, roots []string, kind string) (string, []string, error) {
+	mod := ""
+	var rel []string
+	for i, f := range files {
+		m, ok := moduleOf(f, roots)
+		if !ok {
+			return "", nil, fmt.Errorf("draft: %s is in no %s", f, kind)
+		}
+		if i > 0 && m != mod {
+			return "", nil, fmt.Errorf("draft: tests span %ss %s and %s; split the task", kind, mod, m)
+		}
+		mod = m
+		r := f
+		if m != "." {
+			r = strings.TrimPrefix(f, m+"/")
+		}
+		rel = append(rel, r)
+	}
+	return mod, rel, nil
+}
+
 // draft derives a task from a candidate. The prompt is the commit message and must be
-// rewritten by hand into a request that does not reveal the solution. mods lists the
-// directories with a go.mod at the fix commit.
-func draft(c candidates.Commit, repo, id string, split task.Split, msg string, mods []string) (task.Task, error) {
+// rewritten by hand into a request that does not reveal the solution. manifests lists
+// the go.mod and pubspec.yaml paths at the fix commit.
+func draft(c candidates.Commit, repo, id string, split task.Split, msg string, manifests []string) (task.Task, error) {
 	lang := "go"
 	for _, f := range c.TestFiles {
 		if strings.HasSuffix(f, ".dart") {
@@ -263,44 +297,41 @@ func draft(c candidates.Commit, repo, id string, split task.Split, msg string, m
 		TestFiles: c.TestFiles, Rules: defaultRules[lang],
 		Prompt: "TODO: rewrite as a request without the solution.\n\n" + msg + "\n",
 	}
-	if lang == "go" {
-		pkgs := map[string]bool{}
-		mod := ""
-		for i, f := range c.TestFiles {
-			m, ok := moduleOf(f, mods)
-			if !ok {
-				return t, fmt.Errorf("draft: %s is in no Go module", f)
-			}
-			if i > 0 && m != mod {
-				return t, fmt.Errorf("draft: tests span modules %s and %s; split the task", mod, m)
-			}
-			mod = m
-			rel := strings.TrimPrefix(path.Dir(f), m)
-			rel = strings.TrimPrefix(rel, "/")
-			if m == "." {
-				rel = path.Dir(f)
-			}
-			if rel == "." || rel == "" {
-				pkgs["."] = true
-			} else {
-				pkgs["./"+rel] = true
-			}
+	if lang == "flutter" {
+		mod, rel, err := projectOf(c.TestFiles, rootsOf(manifests, "pubspec.yaml"), "Flutter package")
+		if err != nil {
+			return t, err
 		}
 		if mod != "." {
 			t.Dir = mod
 		}
-		var ps []string
-		for p := range pkgs {
-			ps = append(ps, p)
-		}
-		sort.Strings(ps)
-		t.TestCmd = "go test " + strings.Join(ps, " ")
-		if len(c.Tests) > 0 {
-			t.TestCmd += " -run '^(" + strings.Join(c.Tests, "|") + ")$'"
-		}
+		t.TestCmd = "flutter test " + strings.Join(rel, " ")
 		return t, nil
 	}
-	t.TestCmd = "flutter test " + strings.Join(c.TestFiles, " ")
+	mod, rel, err := projectOf(c.TestFiles, rootsOf(manifests, "go.mod"), "Go module")
+	if err != nil {
+		return t, err
+	}
+	if mod != "." {
+		t.Dir = mod
+	}
+	pkgs := map[string]bool{}
+	for _, r := range rel {
+		if d := path.Dir(r); d == "." {
+			pkgs["."] = true
+		} else {
+			pkgs["./"+d] = true
+		}
+	}
+	var ps []string
+	for p := range pkgs {
+		ps = append(ps, p)
+	}
+	sort.Strings(ps)
+	t.TestCmd = "go test " + strings.Join(ps, " ")
+	if len(c.Tests) > 0 {
+		t.TestCmd += " -run '^(" + strings.Join(c.Tests, "|") + ")$'"
+	}
 	return t, nil
 }
 

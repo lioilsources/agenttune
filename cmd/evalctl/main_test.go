@@ -24,7 +24,7 @@ func TestRulesCheckStdin(t *testing.T) {
 
 func TestDraft(t *testing.T) {
 	c := candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"internal/queue/q_test.go", "q_test.go"}, Tests: []string{"TestRetry", "TestBackoff"}}
-	tk, err := draft(c, "lioilsources/AiStack", "aistack-retry-001", "holdout", "queue: retry", []string{"."})
+	tk, err := draft(c, "lioilsources/AiStack", "aistack-retry-001", "holdout", "queue: retry", []string{"go.mod"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,17 +38,25 @@ func TestDraft(t *testing.T) {
 		t.Fatalf("test_cmd = %q, want %q", tk.TestCmd, want)
 	}
 	sub, err := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"services/gq/internal/p/p_test.go"}, Tests: []string{"TestP"}},
-		"lioilsources/AiStack", "aistack-p-001", "dev", "x", []string{"gateway", "services/gq"})
+		"lioilsources/AiStack", "aistack-p-001", "dev", "x", []string{"gateway/go.mod", "services/gq/go.mod"})
 	if err != nil || sub.Dir != "services/gq" || sub.TestCmd != "go test ./internal/p -run '^(TestP)$'" {
 		t.Fatalf("submodule task = %+v, err %v", sub, err)
 	}
 	if _, err := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"a/x_test.go", "b/y_test.go"}},
-		"r/r", "r-x-001", "dev", "x", []string{"a", "b"}); err == nil {
+		"r/r", "r-x-001", "dev", "x", []string{"a/go.mod", "b/go.mod"}); err == nil {
 		t.Fatal("tests in two modules should fail")
 	}
-	f, _ := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"test/a_test.dart"}}, "lioilsources/SwypeKids", "swypekids-a-001", "dev", "x", nil)
-	if f.Lang != "flutter" || f.TestCmd != "flutter test test/a_test.dart" {
+	f, _ := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"test/a_test.dart"}}, "lioilsources/SwypeKids", "swypekids-a-001", "dev", "x", []string{"pubspec.yaml"})
+	if f.Lang != "flutter" || f.Dir != "" || f.TestCmd != "flutter test test/a_test.dart" {
 		t.Fatalf("flutter task = %+v", f)
+	}
+	app, err := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"app/test/a_test.dart", "app/test/b/b_test.dart"}},
+		"r/r", "r-app-001", "dev", "x", []string{"pubspec.yaml", "app/pubspec.yaml", "app/packages/x/pubspec.yaml"})
+	if err != nil || app.Dir != "app" || app.TestCmd != "flutter test test/a_test.dart test/b/b_test.dart" {
+		t.Fatalf("flutter subdir task = %+v, err %v", app, err)
+	}
+	if _, err := draft(candidates.Commit{SHA: "bbbbbbb", Parent: "aaaaaaa", TestFiles: []string{"test/a_test.dart"}}, "r/r", "r-x-001", "dev", "x", []string{"go.mod"}); err == nil {
+		t.Fatal("dart test outside a Flutter package should fail")
 	}
 }
 
