@@ -1,0 +1,27 @@
+id: biodefense-quiz-done-001
+repo: lioilsources/BioDefenseRogue
+commit: c73cd482181107c3af37448b3f61494881966505
+fix: a8c2e9a826ceb9fc2784bc07172d9f92c1a3c264
+lang: flutter
+dir: immunorun
+prompt: |
+    Hráč chce v knize vidět razítko „kvíz hotov“ u kapitol, jejichž kvíz dokončil. Meta-progrese (`MetaProgress` v immunorun/lib/domain/meta_progress.dart) si to zatím nepamatuje.
+
+    Přidej do `MetaProgress` pole `quizDone` (množina id kapitol, výchozí prázdná), které:
+    - jde nastavit konstruktorem i `copyWith`,
+    - přežije `toMap()` → `MetaProgress.fromMap()` a staré mapy bez klíče dají prázdnou množinu,
+    - ukládá a načítá `SharedPrefsMetaRepository` jako ostatní pole.
+    V `ImmunoGame` přidej `markQuizDone(String chapterId)`, které kapitolu zapíše do mety a ohlásí změnu přes `onMetaChanged` (opakované volání nic nemění). Na hratelnost to nemá vliv.
+test_cmd: flutter test test/meta_progress_test.dart
+test_files:
+    - immunorun/test/meta_progress_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: dev

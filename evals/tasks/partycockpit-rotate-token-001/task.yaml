@@ -1,0 +1,29 @@
+id: partycockpit-rotate-token-001
+repo: lioilsources/PartyCockpit
+commit: 8d478fc2ca23236f18ed75d5be5b8f38a02bc06c
+fix: 8b08d08946ca7ec3eea9b809e398468249584eaa
+lang: go
+dir: backend
+prompt: |
+    Když cockpit token unikne (třeba fotka tabletu s cockpitem), dnes ho nejde vyměnit. Chci endpoint, kterým si cockpit vystaví nový token a starý přestane platit.
+
+    Přidej do backend/internal/api:
+    - `POST /api/parties/{code}/cockpit/rotate`, autorizovaný stejně jako ostatní cockpit endpointy (stávajícím cockpit tokenem),
+    - vygeneruje nový náhodný token, uloží ho k party a vrátí 200 s JSON `{"cockpitToken": "<nový token>"}`,
+    - všechny otevřené cockpit websockety té party se zavřou (stage a hosté zůstávají připojení),
+    - starý token pak na `GET /api/parties/{code}/cockpit` vrací 401, nový 200.
+    Ostatní endpointy a role se nemění.
+test_cmd: go test ./internal/api -run '^(TestRotateCockpitToken)$'
+test_files:
+    - backend/internal/api/security_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

@@ -17,6 +17,12 @@ bin/evalctl run -model <m> -repos-root .. -split dev \
 
 `run` klonuje repo přes `git clone --shared` do dočasné složky, takže zdrojová repa zůstanou netknutá. Agent je šablona příkazu (`{workdir}`, `{prompt_file}`, `{model}`, `{metrics_file}`), takže výběr harnessu (Aider, OpenCode, Claude Code přes LiteLLM) je jen konfigurace. Agent může do `{metrics_file}` zapsat `{"turns":N,"tokens":N}`. Výsledky (`evals/results/`) obsahují diffy, a proto nejsou v gitu.
 
+## Go moduly a Flutter balíčky v podsložce
+
+`draft` najde v commitu opravy nejbližší `go.mod`, případně `pubspec.yaml`, který obsahuje všechny testové soubory. Z jeho složky udělá `dir:` a cesty v `test_cmd` budou relativní k ní, například `dir: app` a `flutter test test/x_test.dart`. Když testy leží ve dvou modulech, `draft` skončí chybou a úlohu je potřeba rozdělit. Jednu úlohu ověří `verify -only <id>`.
+
+Flutter úloha trvá na M2 minuty, ne sekundy. Většinu času zabere `pub get` nad pomalým pub cache a start `flutter test`, výpočet sám je krátký. Proto má sada víc úloh v Go a Flutter úlohy jsou hlavně čistá logika v `test/`, ne golden, integration_test ani screenshot testy.
+
 ## Pravidla
 
 `bin/evalctl rules list` vypíše pravidla a jejich původ (modul DevConventions nebo plán). Každé pravidlo je funkce nad diffem v `internal/rules`, s testy na pozitivní i negativní případ.

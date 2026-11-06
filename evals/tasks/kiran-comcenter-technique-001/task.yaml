@@ -1,0 +1,32 @@
+id: kiran-comcenter-technique-001
+repo: lioilsources/Kiran
+commit: 5ef0eac5bf3f4a8311bc19b58c9d6225a877fe2d
+fix: 207ebffe7da89b9d9356014050a60ab2f37c83b6
+lang: go
+dir: pipeline
+prompt: |
+    Prompt pro pozadí ComCenteru (`comcenter_bg` v pipeline/internal/generator/prompts.go) má napevno řádek „Bold cel-shaded cartoon illustration…“. Ten přebije éru skinu: 8-bit, VGA a vektorové skiny pak vyjdou jako hladký plakát, ze skinu zbude jen paleta.
+
+    Uprav šablonu tak, aby technika vykreslení odpovídala médiu skinu:
+    - rozhoduj podle `ArtDirective` a `StyleKeywords` skinu (bez ohledu na velikost písmen);
+    - „wireframe“ → scéna jako zářící vektorové čáry na černé (text obsahuje „vector lines“);
+    - „low poly“ / „low-poly“ → flat-shaded low-poly 3D (text obsahuje „low-poly“);
+    - „pixel art“ / „16-bit“ → pixel art s viditelnou mřížkou (text obsahuje „pixel grid“);
+    - ostatní skiny dál dostanou cel-shaded cartoon (text obsahuje „cel-shaded“);
+    - retro skiny nesmí mít v promptu `comcenter_bg` slovo „cel-shaded“ nikde.
+    Očekávám: galaga a tyrian_dos → „pixel grid“, asteroids a tempest → „vector lines“, star_fox → „low-poly“, default → „cel-shaded“ (výstup `BuildPrompt("comcenter_bg", skin, nil)`).
+    Zároveň ať kompozice nechá horní dvě třetiny a celý svislý střed téměř prázdné a tmavé (čitelnost textu nad tím). Ostatní šablony se nemění.
+test_cmd: go test ./internal/generator -run '^(TestComCenterBgSceneTechnique)$'
+test_files:
+    - pipeline/internal/generator/scene_technique_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

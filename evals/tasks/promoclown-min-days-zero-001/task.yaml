@@ -1,0 +1,28 @@
+id: promoclown-min-days-zero-001
+repo: lioilsources/PromoClown
+commit: 4169836c7c9553313dd002dd8fe5c535720382dc
+fix: 18e94a8b9748456361d7a5f1495975c820acaf7e
+lang: go
+prompt: |
+    Projekt v projects.yaml nemůže říct „mezi posty žádná mezera“: `min_days_between: 0` se nedá odlišit od souboru, který pole vůbec nemá, a UpsertProject z nuly udělá výchozí týden. Tributy přitom kreditují pokaždé jiného autora a mezeru nepotřebují.
+
+    Uprav to tak, aby:
+    - `model.Project.MinDaysBetween` bylo `*int` (stejné json/yaml tagy `min_days_between`): nil = pole chybí, 0 = opravdu nula,
+    - `Service.UpsertProject` doplnil výchozích 7 dní jen při nil; explicitní 0 uloží a vrátí jako 0, záporná hodnota zůstává chybou validace,
+    - vrácený projekt (i načtený z DB) měl `MinDaysBetween` vždy vyplněné (ne nil),
+    - ostatní výchozí hodnoty se nemění (např. `DailyCap` 0 → 1).
+    Databázové schéma ani vygenerovaný kód v internal/db se nemění.
+test_cmd: go test ./internal/core -run '^(TestMinDaysBetweenZeroSurvivesUpsert)$'
+test_files:
+    - internal/core/service_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

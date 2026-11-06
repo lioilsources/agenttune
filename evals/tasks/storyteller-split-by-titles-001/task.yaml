@@ -1,0 +1,31 @@
+id: storyteller-split-by-titles-001
+repo: lioilsources/storyteller
+commit: ac731f1927af4eed331b63cad7f242355387cf62
+fix: eef9a36713de202a6ebb6404b7444769fa1721d1
+lang: go
+prompt: |
+    Některé knihy (OCR z Internet Archive, přeformátované obsahy, nadpisy jinak než v obsahu) heuristika `SplitTales` nepřečte. Chci pro ně explicitní seznam nadpisů. Přidej do corpus/internal/gutenberg:
+
+    - `SplitByTitles(body string, titles []string, start, end string) (tales []Tale, missing []string)`:
+      - hledání začíná na prvním řádku, který začíná `start` (aby titul nenašel sám sebe v obsahu), a končí před prvním dalším řádkem začínajícím `end` (prázdné `end` = do konce textu); oba markery se porovnávají bez ohledu na velikost písmen a okrajové / opakované mezery;
+      - tituly se hledají popořadě, každý až za předchozím nalezeným, jako celý řádek; porovnání ignoruje velikost písmen, běhy mezer, zvýraznění/uvozovky a koncovou interpunkci a poznámkové značky jako `[8]`, `*` nebo krátké číslo (`KARA KOS SULU 2` = `Kara Kos Sulu`, `THE FROG'S SKIN [8]` = `The Frog's Skin`);
+      - nadpis může být zalomený na dva řádky, mezi nimiž je nejvýš jeden prázdný řádek (`Why the Tiger and the Stag` / `` / `Fear Each Other`);
+      - text pohádky je vše od řádku za nadpisem po další nalezený nadpis (nebo konec rozsahu), oříznutý o okrajové bílé znaky; `Tale.Title` je titul tak, jak je v seznamu;
+      - položka seznamu vytvořená přes `Cut(title)` (konstanta `CutPrefix = "!"`, `Cut` vrací `CutPrefix + title`) ukončí předchozí pohádku, ale sama žádnou nevytvoří (poznámky mezi pohádkami);
+      - `missing` obsahuje nenalezené tituly (bez prefixu Cut), např. přesně `["The Golden Maiden"]`; když se nenajde start (nebo zadaný end) marker, vrátí žádné pohádky a `missing` s jednou položkou, která ho popisuje.
+    - Na `Book` přidej metodu `Key() string` — jméno souborů knihy a její část source_ref; pro gutenbergovou knihu je to její ID jako řetězec (test duplicit v katalogu teď porovnává `Key()`).
+    Heuristika `SplitTales` i stávající katalog se nemění.
+test_cmd: go test ./corpus/internal/gutenberg -run '^(TestCatalogHasNoDuplicateIDs|TestSplitByTitles|TestSplitByTitlesReportsMissing|TestSplitByTitlesSkipsContents)$'
+test_files:
+    - corpus/internal/gutenberg/split_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev
