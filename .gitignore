@@ -8,3 +8,4 @@ data/config.private.yaml
 rules.md
 evals/results/
 bin/
+.env
