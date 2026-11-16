@@ -100,9 +100,9 @@ def scrub_messages(s, messages):
     out = []
     for m in messages:
         m = copy.deepcopy(m)
-        m["content"] = s.clean(m.get("content") or "")
-        if m["role"] == "tool":
-            m["content"] = truncate(m["content"])
+        text = m.get("content") or ""
+        # Truncate first: a cut through an e-mail would leave a fragment the cleaner misses.
+        m["content"] = s.clean(truncate(text) if m["role"] == "tool" else text)
         for c in m.get("tool_calls") or []:
             args = json.loads(c["function"]["arguments"])
             c["function"]["arguments"] = tools.arguments_json(_clean_value(s, args))
@@ -149,14 +149,26 @@ def run(cfg):
     per_session_rule = Counter()
     czech_seen = Counter()
 
+    # Excluded projects (client work, ...): dropped whole, and so is any episode
+    # elsewhere that mentions them in a path, a cwd or plain text.
+    words = [w for w in cfg.private.get("exclude", []) if w]
+    excluded = re.compile("|".join(map(re.escape, words)), re.I) if words else None
+
     files = sorted(cfg.raw.rglob("*.jsonl"))
     for f in files:
         rel = f.relative_to(cfg.raw)
+        if excluded and excluded.search(rel.parts[0]):
+            stats["files_excluded"] += 1
+            continue
         project = project_slug(rel.parts[0])
         sub = "subagents" in rel.parts or len(rel.parts) > 2
         stats["files_subagent" if sub else "files_main"] += 1
         for ep in transcripts.episodes(f, project):
             stats["episodes"] += 1
+            if excluded and (excluded.search(json.dumps(ep.messages, ensure_ascii=False))
+                             or any(excluded.search(r or "") for _, _, r in ep.denials)):
+                stats["drop_excluded"] += 1
+                continue
             # Per episode, not per session: a handful of long sessions hold most of the
             # data, so a session split cannot hit 5 %. Episodes start from a fresh
             # request, so they share little beyond the repo.

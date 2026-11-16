@@ -11,7 +11,8 @@ python3 -m unittest discover -s data/tests
 - jména vlastníka,
 - kmeny jmen, které se nahrazují i uvnitř slov,
 - výrazné názvy svazků,
-- globy `.env` souborů, jejichž tajné hodnoty se nesmí objevit ve výstupu.
+- globy `.env` souborů, jejichž tajné hodnoty se nesmí objevit ve výstupu,
+- `exclude`: vyřazené projekty (např. klientská práce). Vypadnou celé, i s epizodami jinde, kde se zmiňují v cestě nebo textu.
 
 Jinde než lokálně se nezapisuje.
 

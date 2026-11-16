@@ -99,6 +99,9 @@ class ScrubTest(unittest.TestCase):
         self.assertNotIn("Co-Authored-By", t)
         self.assertNotIn("DISK", t)
         self.assertEqual(self.s.clean("thread pool"), "thread pool")
+        t = self.s.clean("ping 10.10.0.$i; ssh u@10.10.0.1xx; pkg@10.7.0; v10.7.0.2b; noreply@box.example.net")  # devconv:allow-ip
+        self.assertEqual(t, "ping <IP>.$i; ssh u@<IP>.1xx; pkg@10.7.0; v10.7.0.2b; <EMAIL>")
+        self.assertEqual(self.s.clean("en0 1500 192.168.88  x"), "en0 1500 <IP>  x")  # devconv:allow-ip
         t = self.s.clean("AuthKey_AB12CD34EF.p8 DEVELOPMENT_TEAM = Q1W2E3R4T5; ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIabc host")  # devconv:allow-ip
         self.assertEqual(t, "AuthKey_<KEY_ID>.p8 DEVELOPMENT_TEAM = <TEAM_ID>; ssh-ed25519 <SSH_PUBKEY> host")
         s = scrub.Scrubber(apple_ids={"AB12CD34EF"})  # devconv:allow-ip

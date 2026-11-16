@@ -3,5 +3,6 @@
   "name_stems": ["lastnam"],
   "env_globs": ["<dev root>/*/.env*", "<dev root>/*/*/.env*"],
   "volumes": ["EXTRA_VOLUME_NAME"],
-  "secret_values": []
+  "secret_values": [],
+  "exclude": ["ClientProject"]
 }

@@ -24,8 +24,15 @@ _ENCODED_HOME = re.compile(r"-(?:Users|home)-[A-Za-z0-9_.]+-")
 _SCRATCH = re.compile(r"/private/tmp/claude-\d+/[^\s\"'`]*?/scratchpad")
 _TMP_CLAUDE = re.compile(r"/private/tmp/claude-\d+/[^\s\"'`/]+")
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_EMAIL_OK = re.compile(r"noreply@|@users\.noreply\.github\.com$|@example\.(com|org)$")
+# Only well-known public senders; noreply@ on the owner's own domain still names the domain.
+_EMAIL_OK = re.compile(r"^noreply@(?:anthropic\.com|github\.com)$|@users\.noreply\.github\.com$|@example\.(com|org)$")
 _IPV4 = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)")
+# A private-range prefix in a template or loop (prefix + "$i" or "1xx"): the
+# trailing dot is required so package versions like "10.7.0" stay.
+_IPV4_PREFIX = re.compile(r"(?<![\w.])(?:10\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3})"
+                          r"\.(?!\d{1,3}(?![\w.]))"
+                          # 192.168.x alone is a network column in netstat; no version looks like it.
+                          r"|(?<![\w.])192\.168\.\d{1,3}(?![\w.])")
 _IP_OK = {"127.0.0.1", "0.0.0.0", "255.255.255.255", "255.255.255.0"}
 _IPV6_ULA = re.compile(r"\bfd[0-9a-f]{2}:[0-9a-f:]{4,}", re.I)
 _SESSION_URL = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]+")
@@ -150,6 +157,7 @@ class Scrubber:
             text = self._vol_words.sub("<VOLUME>", text)
         text = _EMAIL.sub(lambda m: m.group(0) if _EMAIL_OK.search(m.group(0)) else "<EMAIL>", text)
         text = _IPV4.sub(_ip, text)
+        text = _IPV4_PREFIX.sub(lambda m: "<IP>." if m.group(0).endswith(".") else "<IP>", text)
         text = _IPV6_ULA.sub("<IP6>", text)
         if self._names:
             text = self._names.sub("<NAME>", text)
