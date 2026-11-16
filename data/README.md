@@ -1,0 +1,70 @@
+# Dataset builder (UC27, fáze 2)
+
+Z lokálních přepisů Claude Code staví `sft.jsonl` a `dpo.jsonl` pro QLoRA na L40S. Builder běží jen lokálně. Surové přepisy nikam neodcházejí, ven jde jen vyčištěný výstup z `data/out/`. Obojí je v `.gitignore`.
+
+```
+python3 data/build.py --raw data/raw/claude-projects --out data/out --private data/config.private.json
+python3 -m unittest discover -s data/tests
+```
+
+`config.private.json` (vzor v `config.private.example.json`) obsahuje:
+- jména vlastníka,
+- kmeny jmen, které se nahrazují i uvnitř slov,
+- výrazné názvy svazků,
+- globy `.env` souborů, jejichž tajné hodnoty se nesmí objevit ve výstupu.
+
+Jinde než lokálně se nezapisuje.
+
+## Výstup
+
+| soubor | co |
+|---|---|
+| `sft.jsonl`, `sft_eval.jsonl` | `{"messages", "tools", "meta"}`. Jedna epizoda = jedno zadání a celá práce na něm, končí odpovědí asistenta. |
+| `dpo.jsonl`, `dpo_eval.jsonl` | `{"prompt", "chosen", "rejected", "tools", "meta"}`. Chosen i rejected jsou přesně jeden tah asistenta, prompt končí zprávou `user` nebo `tool`. |
+| `dpo_candidates*.jsonl` | Páry, kterým chybí jedna strana. Doplní ji `synth_dpo.py` na L40S. |
+| `report.json` | Jen počty: co prošlo, co a proč vypadlo. |
+| `sample/` | Asi 20 příkladů ke kontrole, napříč délkami a pravidly. |
+
+Eval je ~5 % epizod podle hashe.
+
+Na každém řádku je stejný seznam šesti nástrojů: `read_file`, `write_file`, `edit_file`, `bash`, `grep`, `glob`. Volání má `arguments` jako JSON string a `tool_call_id` sedí s `id`. Výsledky nástrojů delší než ~2 000 znaků se zkrátí na začátek a konec s `[truncated N chars]`. Příklad nad 16k tokenů (odhad) vypadne.
+
+## Co vypadne celé
+
+- **Epizoda s tajemstvím kdekoli**, ani maskovat se nebude. Tajemstvím se rozumí:
+  - token se známým prefixem, JWT nebo privátní klíč,
+  - `Bearer` nebo přiřazení k `*token*`/`*secret*`/`*password*` s náhodně vypadající hodnotou,
+  - heslo v URL,
+  - přesná hodnota z lokálních `.env`.
+- **Epizoda s nástrojem mimo těch šest** (subagenti, zprávy jiným sessions, MCP, artefakty). Zahodit jen volání by nechalo trajektorii reagovat na něco, co se nestalo.
+- **Epizoda s odmítnutým voláním.** Ta se do SFT nedostane a jde do DPO kandidátů.
+- Epizoda přerušená uživatelem nebo neukončená odpovědí.
+
+## Co se nahradí
+
+| co | čím |
+|---|---|
+| domovské cesty | `~` |
+| `/Volumes/<svazek>` | `/work` |
+| LAN a veřejné IP | `<IP>`; `127.0.0.1` a `0.0.0.0` zůstávají |
+| e-maily | `<EMAIL>` |
+| jména | `<NAME>` |
+| Apple Key a Team ID | `<KEY_ID>`, `<TEAM_ID>`, `<APPLE_ID>` |
+| SSH veřejné klíče | `<SSH_PUBKEY>` |
+| URL Claude sessions | `<SESSION_URL>` |
+| řádky s atribucí Claude v commitech | odstraní se |
+
+Thinking bloky se zahazují.
+
+## DPO
+
+1. **Deterministické páry.** Chosen je skutečný tah, který pravidlo dodržel. Rejected je tentýž tah s porušeným pravidlem:
+   - `git add -A` místo jmen souborů,
+   - `git push --force`,
+   - `git commit --no-verify`.
+
+   Liší se jen tím rozhodnutím. Na pravidlo nejvýš 400 párů, z jedné session nejvýš 15.
+2. **Odmítnutá volání.** Volání zastavil hook, bezpečnostní klasifikátor nebo vlastník. Rejected je skutečný tah, chosen vygeneruje `synth_dpo.py` podle důvodu odmítnutí.
+3. **Jazyk.** Chosen je česká závěrečná odpověď, rejected její anglický přepis od modelu.
+
+`synth_dpo.py` čte jen vyčištěné kandidáty a volá libovolný OpenAI-kompatibilní endpoint (vLLM na L40S). Odpověď, která neprojde kontrolou formátu, přeskočí a započítá, nehádá ji.

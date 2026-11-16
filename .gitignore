@@ -7,3 +7,5 @@ data/REVIEW.md
 data/config.private.yaml
 rules.md
 evals/results/
+data/config.private.json
+__pycache__/
