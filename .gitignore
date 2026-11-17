@@ -7,3 +7,17 @@ data/REVIEW.md
 data/config.private.yaml
 rules.md
 evals/results/
+# devconv:start
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.jks
+key.properties
+.DS_Store
+.claude/settings.local.json
+CLAUDE.local.md
+__pycache__/
+*.pyc
+# devconv:end
