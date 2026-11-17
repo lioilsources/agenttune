@@ -7,6 +7,8 @@ export AGENTTUNE_LLM_API_KEY="${AGENTTUNE_LLM_API_KEY:-dummy}"
 here=$(cd "$(dirname "$0")" && pwd)
 export OPENCODE_CONFIG="$here/opencode.json"
 events="$4.events.jsonl"
+# Own data/state dir per run: no clash with the user's OpenCode sessions or DB schema.
+export XDG_DATA_HOME="$(dirname "$4")/opencode-data" XDG_STATE_HOME="$(dirname "$4")/opencode-state"
 rc=0
 opencode run --pure --dir "$1" -m "llm/$3" --format json "$(cat "$2")" > "$events" || rc=$?
 python3 -I "$here/opencode_metrics.py" "$events" > "$4" || true
