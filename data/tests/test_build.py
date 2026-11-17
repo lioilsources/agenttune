@@ -1,5 +1,6 @@
 """Builder tests on made-up transcripts only; no real session data in the repo."""
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -145,20 +146,46 @@ class DpoTest(unittest.TestCase):
         self.assertIsNone(dpo.mutate(self.msg("git push --force"), "no-force-push"))
 
 
+def git_repo(d, name="demo"):
+    """A repo with one commit; returns (path, full hash)."""
+    r = Path(d) / name
+    r.mkdir()
+    run = lambda *a: subprocess.run(["git", "-C", str(r), *a], capture_output=True, text=True, check=True).stdout
+    run("init", "-q", "-b", "main")
+    (r / "x.go").write_text("package main\n")
+    run("add", "x.go")
+    run("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "fix")
+    return r, run("rev-parse", "HEAD").strip()
+
+
+def with_cwd(lines, cwd):
+    return [json.dumps({**json.loads(x), "cwd": str(cwd)}) for x in lines]
+
+
+def committed(h):
+    """HAPPY whose commit result prints the hash."""
+    out = list(HAPPY)
+    out[5] = line("user", [result("t2", f"[main {h[:7]}] fix\npushed to 192.168.7.20")])  # devconv:allow-ip
+    return out
+
+
 class BuildTest(unittest.TestCase):
+    def build(self, root, out, tasks=None):
+        rep = build.run(build.Config(raw=root, out=out, system_prompt="SYS", eval_pct=0, sample=4, tasks=tasks))
+        return rep, {n: read_jsonl(Path(out) / f"{n}.jsonl") for n in ("sft", "dpo", "dpo_candidates")}
+
     def test_end_to_end(self):
-        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out:
-            write_transcript(root, HAPPY + [
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
+                tempfile.TemporaryDirectory() as repos:
+            repo, h = git_repo(repos)
+            write_transcript(root, with_cwd(committed(h) + [
                 line("user", "Pošli token", origin={"kind": "human"}),
                 line("assistant", [use("t9", "Bash", {"command": "echo ghp_" + "b2" * 18})], mid="m9"),
                 line("user", [result("t9", "ok")]),
                 line("assistant", [{"type": "text", "text": "hotovo"}], mid="m10"),
-            ])
-            cfg = build.Config(raw=root, out=out, system_prompt="SYS", eval_pct=0, sample=4)
-            rep = build.run(cfg)
-            sft = read_jsonl(Path(out) / "sft.jsonl")
-            pairs = read_jsonl(Path(out) / "dpo.jsonl")
-            cands = read_jsonl(Path(out) / "dpo_candidates.jsonl")
+            ], repo))
+            rep, o = self.build(root, out)
+            sft, pairs, cands = o["sft"], o["dpo"], o["dpo_candidates"]
         self.assertEqual(rep["drop_secret"], 1)
         self.assertEqual(len(sft), 1)
         row = sft[0]
@@ -174,6 +201,56 @@ class BuildTest(unittest.TestCase):
             self.assertEqual(len(p["chosen"]), 1)
             self.assertEqual(len(p["rejected"]), 1)
         self.assertEqual(cands[0]["need"], "rejected")
+        self.assertEqual(rep["session_success"], 1)
+
+    def test_git_labels_and_eval_filter(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
+                tempfile.TemporaryDirectory() as repos, tempfile.TemporaryDirectory() as tasks:
+            repo, h = git_repo(repos)
+            # No commit evidence: labelled no_commit, kept out of SFT.
+            write_transcript(root, with_cwd(HAPPY, repo))
+            rep, o = self.build(root, out)
+            self.assertEqual((rep["session_no_commit"], len(o["sft"])), (1, 0))
+            self.assertTrue(o["dpo"])  # rule pairs do not need a kept commit
+            # Quiet commit: found by time, so the session is a success.
+            ts = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%cI"],
+                                capture_output=True, text=True).stdout.strip()
+            lines = HAPPY[:5] + [json.dumps({**json.loads(HAPPY[5]), "timestamp": ts})] + HAPPY[6:]
+            write_transcript(root, with_cwd(lines, repo))
+            rep, o = self.build(root, out)
+            self.assertEqual((rep["session_success"], len(o["sft"])), (1, 1))
+            # The same commit as an eval task's fix: the session is dropped everywhere.
+            (Path(tasks) / "t1").mkdir()
+            (Path(tasks) / "t1" / "task.yaml").write_text(f"repo: someone/other\nfix: {h}\n")
+            rep, o = self.build(root, out, tasks)
+            self.assertEqual(rep["session_eval_fix"], 1)
+            self.assertEqual((len(o["sft"]), len(o["dpo"]), len(o["dpo_candidates"])), (0, 0, 0))
+            # A holdout repo: dropped by name.
+            (Path(tasks) / "t1" / "task.yaml").write_text("repo: someone/Demo\nfix: 0000000\nsplit: holdout\n")
+            rep, o = self.build(root, out, tasks)
+            self.assertEqual((rep["session_holdout"], len(o["sft"])), (1, 0))
+
+    def test_correction_pair(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
+                tempfile.TemporaryDirectory() as repos:
+            repo, h = git_repo(repos)
+            write_transcript(root, with_cwd(committed(h) + [
+                line("user", "Přidej Hello", origin={"kind": "human"}),
+                line("assistant", [use("w1", "Write", {"file_path": "/r/a.go", "content": "func Hello() { return \"helo\" }\n"})], mid="m5"),
+                line("user", [result("w1", "ok")]),
+                line("assistant", [{"type": "text", "text": "Hotovo."}], mid="m6"),
+                line("user", "ne, překlep v helo", origin={"kind": "human"}),
+                line("assistant", [use("e1", "Edit", {"file_path": "/r/a.go", "old_string": "\"helo\"", "new_string": "\"hello\""})], mid="m7"),
+                line("user", [result("e1", "ok")]),
+                line("assistant", [{"type": "text", "text": "Opraveno."}], mid="m8"),
+            ], repo))
+            rep, o = self.build(root, out)
+        self.assertEqual(rep["sft_skip_corrected"], 1)
+        pair = next(p for p in o["dpo"] if p["meta"]["rule"] == "in-session-correction")
+        args = lambda t: json.loads(t[0]["tool_calls"][0]["function"]["arguments"])["content"]
+        self.assertIn('"helo"', args(pair["rejected"]))
+        self.assertIn('"hello"', args(pair["chosen"]))
+        self.assertEqual(pair["prompt"][-1], {"role": "user", "content": "Přidej Hello"})
 
     def test_finalize_trims_unanswered_call(self):
         msgs = [{"role": "user", "content": "x"}, {"role": "assistant", "content": "ok"},

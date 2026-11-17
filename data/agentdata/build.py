@@ -13,14 +13,14 @@ import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from . import dpo, scrub, tools, transcripts
+from . import dpo, gitlabel, scrub, tools, transcripts
 
 HEAD, TAIL = 1300, 600  # kept of a long tool result; ~2k chars with the marker
 
 
 class Config:
     def __init__(self, raw, out, system_prompt, private=None, max_tokens=16000,
-                 eval_pct=5, cap_per_rule=400, cap_per_session=15, sample=20):
+                 eval_pct=5, cap_per_rule=400, cap_per_session=15, sample=20, tasks=None):
         self.raw = Path(raw)
         self.out = Path(out)
         self.system_prompt = system_prompt
@@ -30,6 +30,7 @@ class Config:
         self.cap_per_rule = cap_per_rule
         self.cap_per_session = cap_per_session
         self.sample = sample
+        self.tasks = tasks  # evals/tasks dir: fix commits and holdout repos
 
 
 def project_slug(dirname):
@@ -139,6 +140,45 @@ def _split(session, pct):
     return "eval" if int(hashlib.sha1(session.encode()).hexdigest()[:8], 16) % 100 < pct else "train"
 
 
+def split_meta(ep, project, sub, cfg):
+    # Per episode, not per session: a handful of long sessions hold most of the
+    # data, so a session split cannot hit 5 %. Episodes start from a fresh
+    # request, so they share little beyond the repo.
+    return _split(ep.key, cfg.eval_pct), {
+        "source": "claude-code-subagent" if sub else "claude-code", "project": project,
+        "session": hashlib.sha1(ep.session.encode()).hexdigest()[:12]}
+
+
+def _correction_pairs(s, cfg, system, ep, nxt, split_meta_, rows, stats, per_session_rule):
+    """DPO pairs where the human objected and the next episode fixed what this one wrote."""
+    split, meta = split_meta_
+    rule = "in-session-correction"
+    for i, chosen, rejected in dpo.correction_pairs(ep.messages, nxt.messages):
+        prompt = ep.messages[:i]
+        if not prompt or prompt[-1]["role"] not in ("user", "tool") or \
+                not _supported(prompt + [rejected, chosen]):
+            stats["correction_skipped"] += 1
+            continue
+        k = (meta["session"], rule)
+        if per_session_rule[k] >= cfg.cap_per_session:
+            stats["dpo_capped_" + rule] += 1
+            continue
+        clean, secret = scrub_messages(s, prompt + [rejected, chosen])
+        if secret:
+            stats["correction_secret"] += 1
+            continue
+        pair = {"prompt": [system] + clean[:-2], "chosen": [clean[-1]], "rejected": [clean[-2]],
+                "tools": tools.TOOLS,
+                "meta": {**meta, "category": "correction", "rule": rule,
+                         "correction": s.clean(nxt.messages[0]["content"])[:300]}}
+        if tokens(pair) > cfg.max_tokens:
+            stats["dpo_too_long"] += 1
+            continue
+        per_session_rule[k] += 1
+        stats["dpo_rule_" + rule] += 1
+        rows[f"dpo_{split}"].append(pair)
+
+
 def run(cfg):
     s, n_env, n_vals = make_scrubber(cfg.private, cfg.raw)
     system = {"role": "system", "content": cfg.system_prompt.strip()}
@@ -154,27 +194,52 @@ def run(cfg):
     words = [w for w in cfg.private.get("exclude", []) if w]
     excluded = re.compile("|".join(map(re.escape, words)), re.I) if words else None
 
-    files = sorted(cfg.raw.rglob("*.jsonl"))
-    for f in files:
+    files = []
+    for f in sorted(cfg.raw.rglob("*.jsonl")):
         rel = f.relative_to(cfg.raw)
         if excluded and excluded.search(rel.parts[0]):
             stats["files_excluded"] += 1
             continue
-        project = project_slug(rel.parts[0])
-        sub = "subagents" in rel.parts or len(rel.parts) > 2
-        stats["files_subagent" if sub else "files_main"] += 1
+        files.append((f, project_slug(rel.parts[0]), "subagents" in rel.parts or len(rel.parts) > 2))
+
+    # Pass 1: session labels from git, over the main transcript and its subagents.
+    fixes, holdout = gitlabel.task_info(cfg.tasks) if cfg.tasks else (set(), set())
+    stats["eval_fix_commits"], stats["eval_holdout_repos"] = len(fixes), len(holdout)
+    evidence = defaultdict(lambda: {"cwd": None, "commits": [], "times": []})
+    for f, project, sub in files:
         for ep in transcripts.episodes(f, project):
+            ev = evidence[ep.session]
+            if not sub or not ev["cwd"]:
+                ev["cwd"] = ep.cwd or ev["cwd"]
+            ev["commits"] += ep.commits
+            ev["times"] += ep.commit_times
+    git = gitlabel.Git()
+    labels = {sid: gitlabel.label_session(git, ev["cwd"], ev["commits"], ev["times"], fixes, holdout)
+              for sid, ev in evidence.items()}
+    for v in labels.values():
+        stats[f"session_{v}"] += 1
+
+    for f, project, sub in files:
+        stats["files_subagent" if sub else "files_main"] += 1
+        eps = list(transcripts.episodes(f, project))
+        for k, ep in enumerate(eps):
             stats["episodes"] += 1
+            label = labels.get(ep.session, "no_repo")
+            if label in ("holdout", "eval_fix"):
+                stats[f"drop_{label}"] += 1
+                continue
             if excluded and (excluded.search(json.dumps(ep.messages, ensure_ascii=False))
                              or any(excluded.search(r or "") for _, _, r in ep.denials)):
                 stats["drop_excluded"] += 1
                 continue
-            # Per episode, not per session: a handful of long sessions hold most of the
-            # data, so a session split cannot hit 5 %. Episodes start from a fresh
-            # request, so they share little beyond the repo.
-            split = _split(ep.key, cfg.eval_pct)
-            meta = {"source": "claude-code-subagent" if sub else "claude-code", "project": project,
-                    "session": hashlib.sha1(ep.session.encode()).hexdigest()[:12]}
+            corrected = gitlabel.is_correction(ep.next_human)
+            nxt = eps[k + 1] if k + 1 < len(eps) else None
+            if corrected and nxt is not None and not sub and \
+                    not (excluded and excluded.search(json.dumps(nxt.messages, ensure_ascii=False))):
+                _correction_pairs(s, cfg, system, ep, nxt, split_meta(ep, project, sub, cfg), rows,
+                                  stats, per_session_rule)
+            split, meta = split_meta(ep, project, sub, cfg)
+            meta["session_label"] = label
 
             # Refused calls -> candidates (need a generated chosen turn).
             for ai, kind, reason in ep.denials:
@@ -217,7 +282,11 @@ def run(cfg):
             row = {"messages": [system] + clean, "tools": tools.TOOLS,
                    "meta": {**meta, "category": "agentic" if n_calls else "chat", "rule": None}}
             t = tokens(row)
-            if t > cfg.max_tokens:
+            if label != "success":
+                stats[f"sft_skip_{label}"] += 1
+            elif corrected:
+                stats["sft_skip_corrected"] += 1
+            elif t > cfg.max_tokens:
                 stats["drop_too_long"] += 1
             else:
                 rows[f"sft_{split}"].append(row)
@@ -239,7 +308,7 @@ def run(cfg):
                 rows[f"dpo_{split}"].append(pair)
 
             last = clean[-1]
-            if dpo.is_czech_answer(last) and czech_seen["n"] < cfg.cap_per_rule and \
+            if not corrected and dpo.is_czech_answer(last) and czech_seen["n"] < cfg.cap_per_rule and \
                     czech_seen[meta["session"]] < cfg.cap_per_session:
                 cand = {"prompt": [system] + clean[:-1], "chosen": [last], "need": "rejected",
                         "hint": "Rewrite this answer in English, same content and length.",

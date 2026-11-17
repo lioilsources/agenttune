@@ -78,3 +78,36 @@ def is_czech_answer(msg):
     t = msg.get("content") or ""
     return msg["role"] == "assistant" and not msg.get("tool_calls") and len(t) >= 80 and \
         len(_CZECH.findall(t)) >= 5
+
+
+def _edit_calls(messages):
+    """(message index, call index, name, args) for every write_file/edit_file call."""
+    for i, m in enumerate(messages):
+        for j, c in enumerate(m.get("tool_calls") or []):
+            if c["function"]["name"] in ("edit_file", "write_file"):
+                yield i, j, c["function"]["name"], json.loads(c["function"]["arguments"])
+
+
+def correction_pairs(first, follow):
+    """Pairs from an in-session correction.
+
+    `first` is an episode the human objected to, `follow` the episode that
+    fixed it. Where `follow` edits text that `first` had just written (its
+    old_string lies inside a new_string or content of `first`), rejected is
+    the original call and chosen the same call with the fix applied. Yields
+    (message index in first, chosen message, rejected message).
+    """
+    fixes = [(a["path"], a.get("old_string"), a.get("new_string") or "")
+             for _, _, name, a in _edit_calls(follow) if name == "edit_file"]
+    for i, j, name, a in _edit_calls(first):
+        key = "new_string" if name == "edit_file" else "content"
+        orig = a.get(key) or ""
+        fixed = orig
+        for path, old, new in fixes:
+            if path == a["path"] and old and old in fixed:
+                fixed = fixed.replace(old, new, 1)
+        if fixed == orig or not orig.strip():
+            continue
+        chosen = copy.deepcopy(first[i])
+        chosen["tool_calls"][j]["function"]["arguments"] = json.dumps(dict(a, **{key: fixed}), ensure_ascii=False)
+        yield i, chosen, first[i]

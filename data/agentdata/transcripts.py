@@ -33,6 +33,8 @@ _REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>\s*", re.S)
 _WRAPPERS = re.compile(
     r"</?(pasted_content|cross-session-message|task-notification|artifact-content-authored-by-others)\b[^>]*>")
 _INTERRUPT = "[Request interrupted"
+# `git commit` output: "[branch abc1234] subject"
+_COMMIT_OUT = re.compile(r"^\[[^\]\s]+(?: \(root-commit\))? ([0-9a-f]{7,40})\]", re.M)
 
 
 @dataclass
@@ -45,6 +47,12 @@ class Episode:
     denials: list = field(default_factory=list)
     unsupported: set = field(default_factory=set)  # Claude Code tools outside our six
     interrupted: bool = False
+    cwd: str = None
+    # Evidence of commits made here: hashes printed by `git commit` and the
+    # times of successful `git commit` results (quiet commits print no hash).
+    commits: list = field(default_factory=list)
+    commit_times: list = field(default_factory=list)
+    next_human: str = None  # the human message that ended this episode, if any
 
     @property
     def key(self):
@@ -100,6 +108,8 @@ def episodes(path, project):
     n = 0
     last_asst_id = None
     call_ids = {}  # Claude tool_use id -> (our call id, assistant message index)
+    commit_calls = set()  # Claude tool_use ids of Bash calls running `git commit`
+    cwd = None
 
     def close():
         nonlocal cur
@@ -108,6 +118,7 @@ def episodes(path, project):
 
     for o in read_lines(path):
         session = session or o.get("sessionId") or str(path)
+        cwd = cwd or o.get("cwd")
         if o.get("isMeta") or o.get("isApiErrorMessage") or o.get("isVisibleInTranscriptOnly"):
             continue
         if o.get("isCompactSummary"):
@@ -132,6 +143,8 @@ def episodes(path, project):
                 if b.get("type") == "text" and b.get("text", "").strip():
                     a["content"] = (a["content"] + "\n\n" + b["text"]).strip()
                 elif b.get("type") == "tool_use":
+                    if b.get("name") in ("Bash", "bash") and "git commit" in str((b.get("input") or {}).get("command", "")):
+                        commit_calls.add(b.get("id"))
                     conv = tools.convert_call(b.get("name", ""), b.get("input"))
                     if conv is None:
                         cur.unsupported.add(b.get("name", "?"))
@@ -160,6 +173,9 @@ def episodes(path, project):
                 if cid is None:
                     continue
                 text = _REMINDER.sub("", _result_text(b.get("content"))).strip()
+                cur.commits += _COMMIT_OUT.findall(text)
+                if b.get("tool_use_id") in commit_calls and not b.get("is_error") and o.get("timestamp"):
+                    cur.commit_times.append(o["timestamp"])
                 if b.get("is_error"):
                     kind = o.get("toolDenialKind")
                     if kind in DPO_DENIALS:
@@ -182,8 +198,10 @@ def episodes(path, project):
             continue
         if _origin(o) in _STARTS:
             if cur:
+                if _origin(o) != "peer":
+                    cur.next_human = text
                 yield close()
-            cur = Episode(session=session, project=project, index=n)
+            cur = Episode(session=session, project=project, index=n, cwd=cwd)
             call_ids = {}
             n += 1
         elif cur is None:

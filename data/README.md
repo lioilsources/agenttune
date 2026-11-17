@@ -3,9 +3,29 @@
 Z lokálních přepisů Claude Code staví `sft.jsonl` a `dpo.jsonl` pro QLoRA na L40S. Builder běží jen lokálně. Surové přepisy nikam neodcházejí, ven jde jen vyčištěný výstup z `data/out/`. Obojí je v `.gitignore`.
 
 ```
-python3 data/build.py --raw data/raw/claude-projects --out data/out --private data/config.private.json
+data/collect.sh   # záloha přepisů do data/raw/projects (rsync jen *.jsonl, nikdy nemaže)
+python3 data/build.py --raw data/raw/projects --tasks evals/tasks --out data/out --private data/config.private.json
 python3 -m unittest discover -s data/tests
 ```
+
+`collect.sh` pouštěj před každým buildem. Claude Code staré přepisy maže a záloha drží i ty, které už z `~/.claude/projects` zmizely.
+
+## Git a eval
+
+Každá session dostane štítek podle gitu repa, ve kterém běžela (`cwd`):
+
+- **holdout:** repo patří holdout úloze (`split: holdout` v `evals/tasks/*/task.yaml`). Session vypadne ze všech výstupů.
+- **eval_fix:** session vytvořila opravný commit (`fix:`) kterékoli eval úlohy, dev i holdout. Taky vypadne celá.
+- **success:** aspoň jeden její commit je dosažitelný z nějaké větve a není revertnutý. Jen z těchto sessions jde SFT.
+- **failed, no_commit, no_repo:** do SFT nejdou. Pravidlové DPO páry a kandidáti ano.
+
+Commity session se hledají dvojím způsobem:
+- z výpisu `[větev abc1234]`,
+- podle času, protože `git commit -q` hash nevypíše. Bere se každý commit repa do ±180 s od úspěšného volání `git commit`.
+
+Epizoda, po které přijde krátká výtka („ne“, „špatně“, „nefunguje“, „oprav“, „proč jsi“, „wrong“…), do SFT nejde. Když další epizoda edituje text, který ta první právě zapsala, vznikne DPO pár `in-session-correction`:
+- rejected je původní volání `write_file`/`edit_file`,
+- chosen je totéž volání s aplikovanou opravou.
 
 `config.private.json` (vzor v `config.private.example.json`) obsahuje:
 - jména vlastníka,
@@ -66,6 +86,7 @@ Thinking bloky se zahazují.
 
    Liší se jen tím rozhodnutím. Na pravidlo nejvýš 400 párů, z jedné session nejvýš 15.
 2. **Odmítnutá volání.** Volání zastavil hook, bezpečnostní klasifikátor nebo vlastník. Rejected je skutečný tah, chosen vygeneruje `synth_dpo.py` podle důvodu odmítnutí.
-3. **Jazyk.** Chosen je česká závěrečná odpověď, rejected její anglický přepis od modelu.
+3. **Opravy v session** (`in-session-correction`), viz výše. Z jedné session nejvýš 15.
+4. **Jazyk.** Chosen je česká závěrečná odpověď, rejected její anglický přepis od modelu.
 
 `synth_dpo.py` čte jen vyčištěné kandidáty a volá libovolný OpenAI-kompatibilní endpoint (vLLM na L40S). Odpověď, která neprojde kontrolou formátu, přeskočí a započítá, nehádá ji.

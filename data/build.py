@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the UC27 datasets from local Claude Code transcripts.
 
-    python3 data/build.py --raw data/raw/claude-projects --out data/out
+    python3 data/build.py --raw data/raw/projects --tasks evals/tasks --out data/out
 
 Runs locally only. Reads data/config.private.json (gitignored) for the
 owner's names and the .env globs whose secret values must never appear in
@@ -20,7 +20,8 @@ from agentdata import build  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--raw", default=str(HERE / "raw" / "claude-projects"))
+    ap.add_argument("--raw", default=str(HERE / "raw" / "projects"))
+    ap.add_argument("--tasks", help="evals/tasks dir (task.yaml with fix: and split:); without it no eval filter")
     ap.add_argument("--out", default=str(HERE / "out"))
     ap.add_argument("--private", default=str(HERE / "config.private.json"))
     ap.add_argument("--system-prompt", default=str(HERE / "system_prompt.md"))
@@ -35,7 +36,7 @@ def main():
         sys.exit(f"missing {priv}: copy config.private.example.json and fill it in")
     cfg = build.Config(raw=a.raw, out=a.out, system_prompt=Path(a.system_prompt).read_text(),
                        private=json.loads(priv.read_text()), max_tokens=a.max_tokens,
-                       eval_pct=a.eval_pct, cap_per_rule=a.cap_per_rule, sample=a.sample)
+                       eval_pct=a.eval_pct, cap_per_rule=a.cap_per_rule, sample=a.sample, tasks=a.tasks)
     report = build.run(cfg)
     json.dump(report, sys.stdout, indent=1)
     print()
