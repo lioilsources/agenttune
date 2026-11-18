@@ -22,14 +22,35 @@
         "qwen3-coder": {
           "name": "Qwen3-Coder 30B A3B FP8",
           "tool_call": true
+        },
+        "qwen3-coder-sft": {
+          "name": "Qwen3-Coder 30B A3B + UC27 SFT LoRA",
+          "tool_call": true
+        },
+        "qwen3-coder-dpo": {
+          "name": "Qwen3-Coder 30B A3B + UC27 DPO LoRA",
+          "tool_call": true
         }
       }
     }
   },
   "permission": {
     "edit": "allow",
-    "bash": "allow",
+    "bash": {
+      "*": "allow",
+      "*sparkctl*": "deny",
+      "*qctl*": "deny",
+      "*ssh *": "deny",
+      "*scp *": "deny",
+      "*sftp *": "deny",
+      "*rsync *": "deny",
+      "*gh *": "deny",
+      "*docker *": "deny",
+      "*tailscale *": "deny",
+      "*git push*": "deny"
+    },
     "webfetch": "deny",
-    "external_directory": "deny"
+    "external_directory": "deny",
+    "skill": "deny"
   }
 }
