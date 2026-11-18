@@ -48,6 +48,7 @@ class Episode:
     unsupported: set = field(default_factory=set)  # Claude Code tools outside our six
     interrupted: bool = False
     cwd: str = None
+    cwds: dict = field(default_factory=dict)  # every cwd its lines ran in -> count
     # Evidence of commits made here: hashes printed by `git commit` and the
     # times of successful `git commit` results (quiet commits print no hash).
     commits: list = field(default_factory=list)
@@ -119,6 +120,8 @@ def episodes(path, project):
     for o in read_lines(path):
         session = session or o.get("sessionId") or str(path)
         cwd = cwd or o.get("cwd")
+        if cur is not None and o.get("cwd"):
+            cur.cwds[o["cwd"]] = cur.cwds.get(o["cwd"], 0) + 1
         if o.get("isMeta") or o.get("isApiErrorMessage") or o.get("isVisibleInTranscriptOnly"):
             continue
         if o.get("isCompactSummary"):

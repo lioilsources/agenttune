@@ -201,7 +201,7 @@ class BuildTest(unittest.TestCase):
             self.assertEqual(len(p["chosen"]), 1)
             self.assertEqual(len(p["rejected"]), 1)
         self.assertEqual(cands[0]["need"], "rejected")
-        self.assertEqual(rep["session_success"], 1)
+        self.assertEqual(rep["session_repo_success"], 1)
 
     def test_git_labels_and_eval_filter(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
@@ -210,7 +210,7 @@ class BuildTest(unittest.TestCase):
             # No commit evidence: labelled no_commit, kept out of SFT.
             write_transcript(root, with_cwd(HAPPY, repo))
             rep, o = self.build(root, out)
-            self.assertEqual((rep["session_no_commit"], len(o["sft"])), (1, 0))
+            self.assertEqual((rep["session_repo_no_commit"], len(o["sft"])), (1, 0))
             self.assertTrue(o["dpo"])  # rule pairs do not need a kept commit
             # Quiet commit: found by time, so the session is a success.
             ts = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%cI"],
@@ -218,17 +218,48 @@ class BuildTest(unittest.TestCase):
             lines = HAPPY[:5] + [json.dumps({**json.loads(HAPPY[5]), "timestamp": ts})] + HAPPY[6:]
             write_transcript(root, with_cwd(lines, repo))
             rep, o = self.build(root, out)
-            self.assertEqual((rep["session_success"], len(o["sft"])), (1, 1))
+            self.assertEqual((rep["session_repo_success"], len(o["sft"])), (1, 1))
             # The same commit as an eval task's fix: the session is dropped everywhere.
             (Path(tasks) / "t1").mkdir()
             (Path(tasks) / "t1" / "task.yaml").write_text(f"repo: someone/other\nfix: {h}\n")
             rep, o = self.build(root, out, tasks)
-            self.assertEqual(rep["session_eval_fix"], 1)
+            self.assertEqual(rep["session_repo_eval_fix"], 1)
             self.assertEqual((len(o["sft"]), len(o["dpo"]), len(o["dpo_candidates"])), (0, 0, 0))
             # A holdout repo: dropped by name.
             (Path(tasks) / "t1" / "task.yaml").write_text("repo: someone/Demo\nfix: 0000000\nsplit: holdout\n")
             rep, o = self.build(root, out, tasks)
-            self.assertEqual((rep["session_holdout"], len(o["sft"])), (1, 0))
+            self.assertEqual((rep["session_repo_holdout"], len(o["sft"])), (1, 0))
+
+    def test_repo_per_episode(self):
+        # A session started in the parent folder: the repo comes from where the episode worked.
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
+                tempfile.TemporaryDirectory() as repos:
+            repo, h = git_repo(repos)
+            lines = committed(h)
+            lines[2] = line("assistant", [use("t1", "Bash", {"command": f"cd {repo} && cat x.go"})], mid="m1")
+            write_transcript(root, with_cwd(lines, repos))
+            rep, o = self.build(root, out)
+        self.assertEqual((rep["session_repo_success"], len(o["sft"])), (1, 1))
+
+    def test_holdout_visit_from_dev_root(self):
+        # Started in the parent folder: only the episode in the holdout repo goes.
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \
+                tempfile.TemporaryDirectory() as repos, tempfile.TemporaryDirectory() as tasks:
+            repo, h = git_repo(repos)
+            other, _ = git_repo(repos, "secret-holdout")
+            lines = committed(h)
+            lines[2] = line("assistant", [use("t1", "Bash", {"command": f"cd {repo} && cat x.go"})], mid="m1")
+            lines += [line("user", "Podívej se jinam", origin={"kind": "human"}),
+                      line("assistant", [use("t5", "Bash", {"command": f"cd {other} && ls"})], mid="m5"),
+                      line("user", [result("t5", "x.go")]),
+                      line("assistant", [{"type": "text", "text": "Je tam jen x.go."}], mid="m6")]
+            write_transcript(root, with_cwd(lines, repos))
+            (Path(tasks) / "t1").mkdir()
+            (Path(tasks) / "t1" / "task.yaml").write_text("repo: someone/secret-holdout\nfix: 0000000\nsplit: holdout\n")
+            rep, o = self.build(root, out, tasks)
+        self.assertEqual(rep["drop_holdout_episode"], 1)
+        self.assertEqual(len(o["sft"]), 1)
+        self.assertNotIn("secret-holdout", json.dumps(o))
 
     def test_correction_pair(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as out, \

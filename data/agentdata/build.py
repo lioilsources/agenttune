@@ -202,31 +202,54 @@ def run(cfg):
             continue
         files.append((f, project_slug(rel.parts[0]), "subagents" in rel.parts or len(rel.parts) > 2))
 
-    # Pass 1: session labels from git, over the main transcript and its subagents.
+    # Pass 1: labels from git per (session, repo). The repo is found per
+    # episode, since a session started in the dev root works in several.
     fixes, holdout = gitlabel.task_info(cfg.tasks) if cfg.tasks else (set(), set())
     stats["eval_fix_commits"], stats["eval_holdout_repos"] = len(fixes), len(holdout)
-    evidence = defaultdict(lambda: {"cwd": None, "commits": [], "times": []})
+    evidence = defaultdict(lambda: {"commits": [], "times": []})
+    roots, repo_of, start_root = {}, {}, {}
     for f, project, sub in files:
         for ep in transcripts.episodes(f, project):
-            ev = evidence[ep.session]
-            if not sub or not ev["cwd"]:
-                ev["cwd"] = ep.cwd or ev["cwd"]
+            r = gitlabel.episode_repo(ep, roots)
+            repo_of[(f, ep.index)] = r
+            if not sub and ep.session not in start_root:
+                start_root[ep.session] = gitlabel.repo_root(ep.cwd) if ep.cwd else None
+            ev = evidence[(ep.session, r)]
             ev["commits"] += ep.commits
             ev["times"] += ep.commit_times
     git = gitlabel.Git()
-    labels = {sid: gitlabel.label_session(git, ev["cwd"], ev["commits"], ev["times"], fixes, holdout)
-              for sid, ev in evidence.items()}
+    labels = {k: gitlabel.label_session(git, k[1], ev["commits"], ev["times"], fixes, holdout)
+              for k, ev in evidence.items()}
+    # Eval contamination drops the whole session when it was started in the
+    # repo of a holdout task or of an eval fix it made. A session started in the dev root that
+    # visited a holdout repo loses only the episodes there or naming it.
+    # The same goes for an eval fix: in a dev-root session only the work in
+    # the repo of the fix goes.
+    tainted = {}
+    for (sid, r), lab in labels.items():
+        if lab in ("holdout", "eval_fix") and r and r == start_root.get(sid):
+            tainted.setdefault(sid, lab)
+    # Raw strings, not JSON: an escaped "\n" before a name would hide it from a word boundary.
+    holdout_rx = re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(map(re.escape, sorted(holdout))) + r")(?![A-Za-z0-9])",
+                            re.I) if holdout else None
     for v in labels.values():
-        stats[f"session_{v}"] += 1
+        stats[f"session_repo_{v}"] += 1
+    stats["sessions_tainted"] = len(tainted)
 
     for f, project, sub in files:
         stats["files_subagent" if sub else "files_main"] += 1
         eps = list(transcripts.episodes(f, project))
         for k, ep in enumerate(eps):
             stats["episodes"] += 1
-            label = labels.get(ep.session, "no_repo")
-            if label in ("holdout", "eval_fix"):
-                stats[f"drop_{label}"] += 1
+            if ep.session in tainted:
+                stats[f"drop_{tainted[ep.session]}"] += 1
+                continue
+            label = labels.get((ep.session, repo_of.get((f, ep.index))), "no_repo")
+            if label == "eval_fix":
+                stats["drop_eval_fix_episode"] += 1
+                continue
+            if label == "holdout" or (holdout_rx and any(holdout_rx.search(x) for m in ep.messages for x in _strings(m))):
+                stats["drop_holdout_episode"] += 1
                 continue
             if excluded and (excluded.search(json.dumps(ep.messages, ensure_ascii=False))
                              or any(excluded.search(r or "") for _, _, r in ep.denials)):

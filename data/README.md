@@ -16,6 +16,8 @@ Každá session dostane štítek podle gitu repa, ve kterém běžela (`cwd`):
 
 - **holdout:** repo patří holdout úloze (`split: holdout` v `evals/tasks/*/task.yaml`). Session vypadne ze všech výstupů.
 - **eval_fix:** session vytvořila opravný commit (`fix:`) kterékoli eval úlohy, dev i holdout. Taky vypadne celá.
+
+Repo se určuje pro každou epizodu zvlášť: podle `cwd` jejích řádků a absolutních cest v nástrojích. Session spuštěná ve složce nad repy (dev root) pracuje v několika repech. Taková session nevypadne celá, ale přijde jen o epizody v holdout repu, o epizody, které holdout repo zmiňují, a o epizody v repu, kde vytvořila opravný commit eval úlohy. Celá vypadne, když začala přímo v takovém repu.
 - **success:** aspoň jeden její commit je dosažitelný z nějaké větve a není revertnutý. Jen z těchto sessions jde SFT.
 - **failed, no_commit, no_repo:** do SFT nejdou. Pravidlové DPO páry a kandidáti ano.
 
@@ -24,7 +26,7 @@ Commity session se hledají dvojím způsobem:
 - podle času, protože `git commit -q` hash nevypíše. Bere se každý commit repa do ±180 s od úspěšného volání `git commit`.
 
 Epizoda, po které přijde krátká výtka („ne“, „špatně“, „nefunguje“, „oprav“, „proč jsi“, „wrong“…), do SFT nejde. Když další epizoda edituje text, který ta první právě zapsala, vznikne DPO pár `in-session-correction`:
-- rejected je původní volání `write_file`/`edit_file`,
+- rejected je původní volání `write`/`edit`,
 - chosen je totéž volání s aplikovanou opravou.
 
 `config.private.json` (vzor v `config.private.example.json`) obsahuje:
@@ -48,7 +50,7 @@ Jinde než lokálně se nezapisuje.
 
 Eval je ~5 % epizod podle hashe.
 
-Na každém řádku je stejný seznam šesti nástrojů: `read_file`, `write_file`, `edit_file`, `bash`, `grep`, `glob`. Volání má `arguments` jako JSON string a `tool_call_id` sedí s `id`. Výsledky nástrojů delší než ~2 000 znaků se zkrátí na začátek a konec s `[truncated N chars]`. Příklad nad 16k tokenů (odhad) vypadne.
+Na každém řádku je stejný seznam šesti nástrojů OpenCode, ve kterém model poběží (`evals/harness`): `bash`, `read`, `edit`, `write`, `grep`, `glob`, se stejnými jmény argumentů (`filePath`, `oldString`, `newString`, `include`). `bash` má povinné `description`, když chybí, doplní se „Run command“. Volání má `arguments` jako JSON string a `tool_call_id` sedí s `id`. Výsledky nástrojů delší než ~2 000 znaků se zkrátí na začátek a konec s `[truncated N chars]`. Příklad nad 16k tokenů (odhad) vypadne.
 
 ## Co vypadne celé
 

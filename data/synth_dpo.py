@@ -42,7 +42,7 @@ Answer (JSON):
 """
 
 FORMAT = """Return only a JSON object: {"content": "<text>", "tool_calls": [{"name": "<tool>", "arguments": {...}}]}.
-tool_calls may be empty. Allowed tools: read_file, write_file, edit_file, bash, grep, glob."""
+tool_calls may be empty. Allowed tools: bash, read, edit, write, grep, glob."""
 
 
 def render_context(prompt, limit=12000):
@@ -67,6 +67,9 @@ def task_for(row):
     return tpl.format(hint=row.get("hint", ""), given=g) + "\n" + FORMAT
 
 
+_REQUIRED = {t["function"]["name"]: t["function"]["parameters"]["required"] for t in tools.TOOLS}
+
+
 def parse_turn(text):
     """The model's JSON answer as an assistant message, or None."""
     text = text.strip()
@@ -85,6 +88,10 @@ def parse_turn(text):
     calls = []
     for i, c in enumerate(o.get("tool_calls") or []):
         if not isinstance(c, dict) or c.get("name") not in tools.TOOL_NAMES or not isinstance(c.get("arguments"), dict):
+            return None
+        if c["name"] == "bash":
+            c["arguments"].setdefault("description", "Run command")
+        if any(k not in c["arguments"] for k in _REQUIRED[c["name"]]):
             return None
         calls.append({"id": f"call_s{i + 1}", "type": "function",
                       "function": {"name": c["name"], "arguments": tools.arguments_json(c["arguments"])}})
