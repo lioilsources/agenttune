@@ -26,6 +26,9 @@ sb=$(dirname "$4")/sandbox; mkdir -p "$sb/home" "$sb/bin"
 for t in sparkctl qctl ssh scp sftp rsync gh docker tailscale jodadeploy; do
   printf '#!/bin/sh\necho "%s: not available in the eval sandbox" >&2\nexit 126\n' "$t" > "$sb/bin/$t"; chmod +x "$sb/bin/$t"
 done
+# Nothing inherited that reaches beyond the clone: ssh agent, Claude Code session tokens.
+unset SSH_AUTH_SOCK SSH_AGENT_PID
+for v in $(env | cut -d= -f1 | grep -E '^(CLAUDE|ANTHROPIC|CLAUDECODE)'); do unset "$v"; done
 export HOME="$sb/home"
 export PATH="$sb/bin:$(echo "$PATH" | tr ':' '\n' | grep -v -e "^$real_home/.local/bin" -e "^$real_home/bin" | paste -sd: -)"
 git -C "$1" remote set-url --push origin /dev/null/push-blocked 2>/dev/null || true
