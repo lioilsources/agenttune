@@ -23,7 +23,8 @@ _HOME = re.compile(r"/(?:Users|home)/[^/\s\"'`:;,)\]]+")
 _ENCODED_HOME = re.compile(r"-(?:Users|home)-[A-Za-z0-9_.]+-")
 _SCRATCH = re.compile(r"/private/tmp/claude-\d+/[^\s\"'`]*?/scratchpad")
 _TMP_CLAUDE = re.compile(r"/private/tmp/claude-\d+/[^\s\"'`/]+")
-_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# Also regex-escaped addresses (name\\.x@host\\.com) as they appear in grep commands.
+_EMAIL = re.compile(r"\b[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\*\.[A-Za-z]{2,}\b")
 # Only well-known public senders; noreply@ on the owner's own domain still names the domain.
 _EMAIL_OK = re.compile(r"^noreply@(?:anthropic\.com|github\.com)$|@users\.noreply\.github\.com$|@example\.(com|org)$")
 _IPV4 = re.compile(r"(?<![\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w]|\.\d)")

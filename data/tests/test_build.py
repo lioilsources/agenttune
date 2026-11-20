@@ -302,5 +302,23 @@ class SynthTest(unittest.TestCase):
         self.assertIsNone(synth_dpo.complete(row, lambda c, t: '{"content": "", "tool_calls": [{"name": "rm"}]}'))
 
 
+class LoopFilter(unittest.TestCase):
+    def test_loop_reason(self):
+        def call(cmd):
+            return {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "x", "type": "function", "function": {"name": "bash", "arguments": {"command": cmd}}}]}
+        ok = [call("go test ./..."), call("go vet ./..."), call("go test ./...")]
+        self.assertIsNone(build.loop_reason(ok, 30, 2))
+        self.assertEqual(build.loop_reason(ok + [call("go test ./...")], 30, 2), "repeated_call")
+        self.assertEqual(build.loop_reason([call(str(i)) for i in range(31)], 30, 2), "many_calls")
+        self.assertIsNone(build.loop_reason([call(str(i)) for i in range(31)], 0, 0))
+
+
+class EscapedEmail(unittest.TestCase):
+    def test_regex_escaped_email(self):
+        out = scrub._EMAIL.sub("<EMAIL>", r'grep "^ADMIN=.*jan\\.novak@example\\.net" .env')
+        self.assertNotIn("novak", out)
+
+
 if __name__ == "__main__":
     unittest.main()

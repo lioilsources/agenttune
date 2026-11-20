@@ -20,7 +20,8 @@ HEAD, TAIL = 1300, 600  # kept of a long tool result; ~2k chars with the marker
 
 class Config:
     def __init__(self, raw, out, system_prompt, private=None, max_tokens=16000,
-                 eval_pct=5, cap_per_rule=400, cap_per_session=15, sample=20, tasks=None):
+                 eval_pct=5, cap_per_rule=400, cap_per_session=15, sample=20, tasks=None,
+                 max_calls=30, max_repeat=2):
         self.raw = Path(raw)
         self.out = Path(out)
         self.system_prompt = system_prompt
@@ -31,6 +32,8 @@ class Config:
         self.cap_per_session = cap_per_session
         self.sample = sample
         self.tasks = tasks  # evals/tasks dir: fix commits and holdout repos
+        self.max_calls = max_calls    # SFT: longer trajectories teach wandering (0 = no limit)
+        self.max_repeat = max_repeat  # SFT: an identical call more often than this is a loop (0 = no limit)
 
 
 def project_slug(dirname):
@@ -42,6 +45,17 @@ def project_slug(dirname):
 def tokens(obj):
     # Rough: code and Czech run ~3 chars per token in the Qwen tokenizer.
     return len(json.dumps(obj, ensure_ascii=False)) // 3
+
+
+def loop_reason(messages, max_calls, max_repeat):
+    """Why a trajectory looks like wandering or a loop, or None."""
+    calls = [(c["function"]["name"], json.dumps(c["function"].get("arguments"), sort_keys=True))
+             for m in messages if m["role"] == "assistant" for c in m.get("tool_calls") or []]
+    if max_calls and len(calls) > max_calls:
+        return "many_calls"
+    if max_repeat and calls and max(calls.count(c) for c in set(calls)) > max_repeat:
+        return "repeated_call"
+    return None
 
 
 def truncate(text):
@@ -309,6 +323,8 @@ def run(cfg):
                 stats[f"sft_skip_{label}"] += 1
             elif corrected:
                 stats["sft_skip_corrected"] += 1
+            elif loop := loop_reason(clean, cfg.max_calls, cfg.max_repeat):
+                stats[f"sft_skip_{loop}"] += 1
             elif t > cfg.max_tokens:
                 stats["drop_too_long"] += 1
             else:

@@ -29,6 +29,8 @@ def main():
     ap.add_argument("--eval-pct", type=int, default=5)
     ap.add_argument("--cap-per-rule", type=int, default=400)
     ap.add_argument("--sample", type=int, default=20)
+    ap.add_argument("--max-calls", type=int, default=30, help="SFT: drop trajectories with more tool calls (0 = off)")
+    ap.add_argument("--max-repeat", type=int, default=2, help="SFT: drop when one identical call repeats more often (0 = off)")
     a = ap.parse_args()
 
     priv = Path(a.private)
@@ -36,7 +38,8 @@ def main():
         sys.exit(f"missing {priv}: copy config.private.example.json and fill it in")
     cfg = build.Config(raw=a.raw, out=a.out, system_prompt=Path(a.system_prompt).read_text(),
                        private=json.loads(priv.read_text()), max_tokens=a.max_tokens,
-                       eval_pct=a.eval_pct, cap_per_rule=a.cap_per_rule, sample=a.sample, tasks=a.tasks)
+                       eval_pct=a.eval_pct, cap_per_rule=a.cap_per_rule, sample=a.sample, tasks=a.tasks,
+                       max_calls=a.max_calls, max_repeat=a.max_repeat)
     report = build.run(cfg)
     json.dump(report, sys.stdout, indent=1)
     print()
