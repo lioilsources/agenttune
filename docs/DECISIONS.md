@@ -22,7 +22,13 @@ Zadání: `DevConventions/Prompts/02-AGENTTUNE_PLAN.md`. Platí pravidla DevConv
 ## Rozhodnuto (Opus, podle §5 plánu)
 - Inventarizační skripty běží na M2 a jen čtou; vypisují počty, žádný obsah sessions.
 
+- Runner nezávisí na harnessu: agent je šablona příkazu. Volba Aider / OpenCode / Claude Code přes proxy (§5, ptát se Olina) tím neblokuje fázi 1.
+- Úlohy klonují repo přes `git clone --shared` do dočasné složky; nevzniká worktree ve zdrojovém repu (DevConventions zakazuje editovat worktree).
+- Holdout se dělí po repech (status-collector je v pilotu celý holdout), ne po commitech.
+- `go-errors-wrap` hlásí jen holé `return err` po volání jiného balíčku nebo metody (`pkg.F()`, `x.M()`), jak říká plán.
+
 ## Zjištění, která mění plán
 
 - **Data mizí.** Nejstarší přepis je z 25. 9. 2026 a `cleanupPeriodDays` není nastavené, takže Claude Code mazal přepisy starší než 30 dní. Bez změny nastavení přijdeme každý den o další. Viz `DATA_INVENTORY.md`.
 - Dat je málo: 91 sessions a 2 518 lidských turnů. Na SFT trajektorií to stačí jen na malý dataset; preferenční páry z oprav budou stovky, ne tisíce.
+- `go-errors-wrap` (z `shared/stacks/go.md`) porušují stávající commity ve všech Go repech, 382× na 161 commitech. Buď je pravidlo jen přání, nebo chybí vynucení. Rozhodnutí patří do DevConventions, ne sem.

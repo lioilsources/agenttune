@@ -1,0 +1,26 @@
+id: mangaprompts-ailineage-sign-001
+repo: lioilsources/MangaPrompts
+commit: 1c8f02eb418f867e3bf189d0bd64f870e59b58e2
+fix: 7dcd689e6351df3a2dfc8f9b3079f27e082f773e
+lang: flutter
+prompt: |
+    Chci, aby obrázky z ComfyUI nesly podepsaný původ přes uzel AILineage. Když ho server má, každý `SaveImage` v grafu se při odeslání nahradí uzlem `AILineageSaveImage`; server bez uzlu (nebo offline) dostane graf beze změny.
+
+    V `ComfyImageService` (lib/services/comfy_image_service.dart):
+    - konstanta `static const kAiLineageNode = 'AILineageSaveImage'`,
+    - `static void signOutputs(Map<String, dynamic> wf, {required String prompt})` (označ `@visibleForTesting`) upraví graf na místě: každý uzel s `class_type == 'SaveImage'` dostane `class_type` `kAiLineageNode`, jeho stávající vstupy (`images`, `filename_prefix`) zůstanou a přibudou `format: 'png'`, `quality: 95`, `prompt_storage: 'none'`, `prompt_text: <prompt>`, `hash_weights: true`, `embed_workflow: false`; ostatní uzly se nemění, takže po volání v grafu žádný `SaveImage` nezbude. Musí fungovat pro všechny šablony `assets/comfyui/*.api.json`,
+    - při zařazení promptu (`_queuePrompt`) graf podepiš, jen když byl sestaven z neprázdného uživatelského promptu a server uzel hlásí (`GET /object_info/AILineageSaveImage` vrátí 200 a JSON s tímto klíčem); výsledek kontroly si drž asi 10 minut, chyba sítě = nepodepisovat.
+    Šablony v assets/comfyui ani bot (tgbot) neměň; sběr výstupů a pojmenování souborů zůstávají stejné.
+test_cmd: flutter test test/ailineage_sign_test.dart
+test_files:
+    - test/ailineage_sign_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: dev

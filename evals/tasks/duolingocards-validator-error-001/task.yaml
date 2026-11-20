@@ -1,0 +1,30 @@
+id: duolingocards-validator-error-001
+repo: lioilsources/DuolingoCards
+commit: b0c8d7d19f54d14615992791900d8a5660550482
+fix: 3adb3ccbb5237698d427b326666ae447e5f55fe3
+lang: go
+dir: quiz-generator
+prompt: |
+    Při běhu proti živému validačnímu VLM se ukázalo, že validátor občas vrátí nečitelnou odpověď. `imagetune.Tune` pak celou kartu ukončí chybou a vygenerovaný obrázek zahodí, takže není co zkoumat.
+
+    Uprav quiz-generator/internal/imagetune tak, aby chyba validátoru nebyla tvrdé selhání:
+    - `Tune(...)` v takovém případě vrátí `err == nil` a v `Result` nové pole `ValidatorErr error` s chybou validátoru.
+    - Vygenerovaný obrázek zůstane v `Result.Image`.
+    - Smyčka hned skončí: žádná další generace ani volání builderu (`Refine`), i když `MaxIters` dovoluje víc.
+    - Iterace se zapíše do `Result.Transcript` (právě jeden záznam), včetně verdiktu, který validátor vrátil spolu s chybou — hlavně jeho `RawResponse`, ať je surová odpověď vidět.
+    - Do logu jde varování se surovou odpovědí; `RenderTranscript` u takového výsledku vypíše upozornění, že validátor nedal použitelný verdikt, a `content images` vypíše místo „OK“ řádek „WARN … saved, but validator gave no usable verdict“.
+    Chyby generátoru a dekódování obrázku dál vrací chybu jako dosud; běžné chování smyčky (práh skóre, max iterací) se nemění.
+test_cmd: go test ./internal/imagetune -run '^(TestTuneGracefulOnValidatorError)$'
+test_files:
+    - quiz-generator/internal/imagetune/tune_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

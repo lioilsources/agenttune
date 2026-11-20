@@ -1,0 +1,24 @@
+id: finetunegallery-image-detail-001
+repo: lioilsources/FineTuneGallery
+commit: 1d19cde0442b61693acfd39db9e4d2385d08743d
+fix: e3ddbe78ceddeb87c03fef8cf93cbc3f9e0d264d
+lang: go
+dir: server
+prompt: |
+    Kliknutí na obrázek v galerii hlásí „Failed to load image“: GET /api/images/{id} vrací 500 se „sql: expected 20 destination arguments in Scan, not 17“. Seznam obrázků funguje.
+
+    Oprav detail obrázku v server/ (handleImageDetail), aby vracel i `lora_strength`, `style_id` a `is_repose` a hodnoty nebyly posunuté o sloupec. Přidej test, který to pohlídá.
+test_cmd: go test . -run '^(TestImageDetailCarriesStyleAndLoraStrength)$'
+test_files:
+    - server/gallery_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

@@ -1,0 +1,30 @@
+id: kiran-variant-selections-001
+repo: lioilsources/Kiran
+commit: b8232dda21f72b3d5877a27630a34a841c7d82cf
+fix: f001390829454608f31353c8ce72e8da387f22eb
+lang: go
+dir: pipeline
+prompt: |
+    Generátor dělá u každého assetu čtyři variace a postprocess vybírá jednu přes jediný skin-wide `-variation`, který pak zapomene. Nikde není zapsané, z které variace který sprite pochází, a přebrání jednoho špatného spritu znamená přegenerovat celý skin.
+
+    Přidej do pipeline/internal/postprocess záznam výběru variant:
+    - typ `Selections struct { Skin string; Assets map[string]int }` (json `skin`, `assets`), uložený v `selections/<skin>.json` (mimo gitignorovaný output/, konstanta `SelectionsDir = "selections"`, `SelectionsPath(root, skinID string) string`);
+    - `LoadSelections(path, skinID string) (*Selections, error)`: chybějící soubor není chyba, vrátí prázdný záznam; poškozený JSON je chyba;
+    - `(*Selections).Save(path string) error` (vytvoří adresář, stabilní pořadí klíčů) a `(*Selections).Set(asset string, variation int)`; po Save a novém Load se hodnoty vrátí;
+    - `(*Selections).For(asset string, fallback int) int`: zaznamenaná variace, jinak fallback; hodnota 0 nebo záporná se bere jako nezaznamenaná; na nil záznamu nesmí spadnout a vrací fallback;
+    - do `Config` pole `Sel *Selections` a `Only string` (zpracovat jen jeden asset) a nevyexportovaná metoda `(Config) variationFor(asset string) int`, která vrací záznam ze `Sel`, jinak `Config.Variation` (i když je `Sel` nil).
+    Run má brát variantu každého assetu přes variationFor; skin bez záznamu se chová přesně jako dosud. Zapojení do cmd/postprocess (načíst, explicitní -variation zapsat zpět, přepínač -only) je vítané, ale stávající chování bez nových přepínačů se nemění.
+test_cmd: go test ./internal/postprocess -run '^(TestSelectionsMissingFileIsNotAnError|TestSelectionsRoundTrip|TestConfigVariationForPrefersTheRecord|TestConfigVariationForWithoutRecord|TestSelectionsIgnoresZeroAndNegative)$'
+test_files:
+    - pipeline/internal/postprocess/selections_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

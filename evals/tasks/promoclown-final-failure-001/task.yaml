@@ -1,0 +1,23 @@
+id: promoclown-final-failure-001
+repo: lioilsources/PromoClown
+commit: 03af8d3876d08356e25f0e956f87ec2b5298777e
+fix: a26389cf4192d59ae5abc1c69315faa5e7a36139
+lang: go
+prompt: |
+    Tributy, u kterých renderer hlásí „No face detected.“, se po selhání znovu a znovu vracejí do fronty (RequeueFailedTributes) a pokaždé selžou stejně.
+
+    Přidej do `model.TributeDoneRequest` pole `Final bool` (JSON `final`, omitempty). Když worker hlásí chybu s `Final: true`, tribut už automaticky zpět do fronty jít nesmí. Ruční admin retry (`RetryTribute`) ho ale vrátit do stavu `queued` musí dál. Worker v cmd/promo-tribute má chybu „No face detected“ hlásit jako finální.
+test_cmd: go test ./internal/core -run '^(TestFinalFailureIsNotRequeued)$'
+test_files:
+    - internal/core/tributes_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

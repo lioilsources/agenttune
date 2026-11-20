@@ -1,0 +1,26 @@
+id: orbitrontactics-threat-analyzer-001
+repo: lioilsources/OrbitronTactics
+commit: 91f48ad8f28dd08a3240ee3a1b223c948f98c332
+fix: e259e35ceb027a51a29bcae04877681ae0c4d29e
+lang: flutter
+prompt: |
+    Hráč na tahu má vidět, které jeho figurky může soupeř příštím tahem sebrat: červený odznak „!“ v pravém horním rohu figurky, jen ve fázi hry.
+
+    Přidej čistě dartovou službu `ThreatAnalyzer` do lib/core/game_logic/services/threat_analyzer.dart:
+    - `static Set<Position> getThreatenedPositions(BoardState board, PlayerColor player)` vrátí pozice figurek hráče `player`, na které se může přesunout (sebrat je) kterákoli figurka soupeře podle stávajících pravidel pohybu (validátory v lib/core/game_logic/validators/, „last warrior“ má vlastní validátor),
+    - každá pozice ve výsledku jen jednou, i když ji ohrožuje víc figurek; nikdy v něm nejsou figurky soupeře ani prázdná pole; blokovaná dráha (např. věž za vlastní figurkou) neohrožuje,
+    - funguje pro bílého i černého.
+    V UI: `PieceRenderer.build` dostane nepovinný pojmenovaný parametr `isThreatened` (výchozí `false`) a `GameBoard` ho nastaví podle `ThreatAnalyzer` pro hráče na tahu jen ve fázi `GamePhase.playing`. Pravidla pohybu ani validátory neměň.
+test_cmd: flutter test test/core/game_logic/services/threat_analyzer_test.dart
+test_files:
+    - test/core/game_logic/services/threat_analyzer_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: holdout

@@ -1,0 +1,29 @@
+id: aistack-audio-tts-001
+repo: lioilsources/AiStack
+commit: ae366378ea742ee86ad44f21a3c1937cc1e11c43
+fix: c9781060ca203d8229656c8eb4c48eda6cb37b7e
+lang: go
+dir: pkg/audioclient
+prompt: |
+    Go klient pkg/audioclient umí zatím jen hudbu a SFX. Služba audio má i TTS (POST /v1/audio/tts) a katalog hlasů (GET /v1/audio/voices) a potřebuju je volat z Go.
+
+    Přidej do balíčku audioclient:
+    - typ `TTSSpec` s poli aspoň `Text` (json `text`), `Language` (`language`), `Voice`, `Engine`, `Model`, `Speed`, `Seed`, `Variations`, `Format`, `Params` (vše kromě textu s `omitempty`) a `CommercialOnly *bool` (json `commercial_only,omitempty`): nil se do requestu vůbec neposílá (výchozí true platí na straně služby), `&false` se pošle jako `false`,
+    - `func (c *Client) GenerateSpeech(ctx context.Context, spec TTSSpec) (Job, error)`, který zařadí job přes POST /v1/audio/tts stejně jako GenerateMusic/GenerateSFX,
+    - typ `Voice` (položka katalogu: `ID` json `id`, engine, model, type, jazyk/jazyky, `Commercial` json `commercial`, licence, `Attribution` json `attribution` a podobně),
+    - `func (c *Client) Voices(ctx context.Context, engine, language string, commercial *bool) ([]Voice, error)` přes GET /v1/audio/voices: filtry `engine`, `language` a `commercial` (`true`/`false`) jdou jako query parametry, prázdný řetězec nebo nil filtr se vůbec neposílá.
+    Stávající API pro hudbu a SFX zůstává beze změny.
+test_cmd: go test . -run '^(TestGenerateSpeechLeavesCommercialOnlyToServer|TestVoicesSendsFilters)$'
+test_files:
+    - pkg/audioclient/client_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

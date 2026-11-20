@@ -1,0 +1,26 @@
+id: orbitrontactics-arena-layout-001
+repo: lioilsources/OrbitronTactics
+commit: c08139342fae040601bbd72666d028367c1c759c
+fix: db8aed0ce413069b49179ced6584b91b5978b9ba
+lang: flutter
+prompt: |
+    V bitevní aréně výška (altitude 0–1) posune loď jen o pár procent výšky arény, takže změnu skoro nevidíš. Chci, aby výška znamenala, kde v polovině arény loď letí: nejníž u vlastního okraje, nejvýš těsně před dělicí čarou.
+
+    Přidej `ArenaLayout` do lib/features/battle/presentation/widgets/arena_layout.dart (jen statické členy, bez instance):
+    - konstanty `edgeMargin = 0.08` (mezera mezi nejníž letící lodí a jejím okrajem, jako zlomek výšky arény) a `frontMargin = 0.06` (mezera mezi nejvýš letící lodí a středem arény),
+    - `travelFraction` – kolik výšky arény loď urazí přes celý rozsah výšky, tj. `0.5 - edgeMargin - frontMargin`,
+    - `static double shipY(double altitude, {required bool atBottom, required Size arena})` (`Size` z dart:ui): spodní loď je při výšce 0 na `height * (1 - edgeMargin)` a při výšce 1 na `height * (0.5 + frontMargin)`; horní loď je zrcadlově na `height * edgeMargin` a `height * (0.5 - frontMargin)`. Mezi tím lineárně, takže stoupání posouvá loď vždy k nepříteli a žádná loď neopustí svou polovinu.
+    `BattleArenaPainter` ať pozici lodí bere z `ArenaLayout.shipY` a ovládání v `BattleScreen` ať tažením prstu dopředu mění výšku o tutéž vzdálenost (dělí výškou arény krát `travelFraction`). Zbytek bitvy (engine, střely, štíty) se nemění.
+test_cmd: flutter test test/features/battle/arena_layout_test.dart
+test_files:
+    - test/features/battle/arena_layout_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: holdout

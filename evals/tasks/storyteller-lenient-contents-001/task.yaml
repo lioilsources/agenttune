@@ -1,0 +1,32 @@
+id: storyteller-lenient-contents-001
+repo: lioilsources/storyteller
+commit: 3cab64532c9bd83f0f6e148858b7f22733812020
+fix: 3b1492c91e920c68b6d5d6bab7236011a1dfca01
+lang: go
+prompt: |
+    Do korpusu přidáváme sbírky pohádek z celého světa, ale `gutenberg.SplitTales(body, bookTitle string) []Tale` (corpus/internal/gutenberg/split.go) čte jen obsahy ve stylu Grimm/Andersen/Lang. U nových knih obsah nepozná nebo z něj vytáhne nesmysly.
+
+    Uprav čtení obsahu (CONTENTS) a hledání nadpisů tak, aby zvládlo:
+    - nadpis obsahu `TABLE OF CONTENTS` (vedle `CONTENTS`);
+    - číslované položky bez tečky (`1  THE LION AND THE HARE`, `2 How the Tortoise Won`) i s tečkou (`12. Title`, `XII. The Last Tale.`); římská čísla jen s tečkou nebo se dvěma mezerami, aby `CIVIL WAR AT SEA` nepřišlo o první slovo;
+    - čísla stránek na konci za jednou mezerou, více mezerami nebo za tečkami (`… ............ 3`, `… Won 11`, `… SEA  40`);
+    - koncovou tečku v obsahu i v nadpisu v těle (`The Last Tale.` v obsahu, `THE LION AND THE HARE.` v těle) — porovnává se bez ní a bez ohledu na velikost písmen; titul tale se bere z obsahu bez tečky;
+    - obsah s dvojitým řádkováním (prázdné řádky mezi položkami ho neukončí); konec obsahu pozná tak, že se znovu objeví jeden z prvních tří titulů (to je začátek těla);
+    - nadpisy v těle mohou nést i číslo (`1.  DINEWAN THE EMU`), pořád se ale musí shodovat celý řádek;
+    - nadpisy se hledají popořadě: každý další až za předchozím nalezeným.
+    Příklad: obsah `TABLE OF CONTENTS` s položkami `1  THE LION AND THE HARE ............ 3`, `2  How the Tortoise Won 11`, `XII. The Last Tale.`, `CIVIL WAR AT SEA  40` a tělo s nadpisy `THE LION AND THE HARE.`, `HOW THE TORTOISE WON`, `THE LAST TALE`, `CIVIL WAR AT SEA` dá čtyři pohádky s tituly `THE LION AND THE HARE`, `How the Tortoise Won`, `The Last Tale`, `CIVIL WAR AT SEA` a text první je přesně `The lion was hungry.`.
+    Stávající sbírky (Grimm, Andersen, Aesop, Lang) se musí dělit stejně jako dosud a stávající testy v balíčku musí dál procházet.
+test_cmd: go test ./corpus/internal/gutenberg -run '^(TestLenientContentsVariants)$'
+test_files:
+    - corpus/internal/gutenberg/split_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

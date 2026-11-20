@@ -1,0 +1,23 @@
+id: statuscollector-dead-probes-001
+repo: lioilsources/status-collector
+commit: e84eba439ef62f17efdbf2292bf45d640bc7239f
+fix: a3ce1b917e5f71d2e618f6292320618dbec93e8a
+lang: go
+prompt: |
+    Na status page je pět řádků checkeru trvale červených, protože ty endpointy na hostu nikdy neexistovaly: `ping` (host má /health), `vllm_version`, `vllm_metrics`, `vllm_tokenize` (jen vLLM-native cesty, vystavené je jen OpenAI API) a `openai_embeddings` (servírovaný model nemá embedding hlavu, vždy 500).
+
+    Odstraň je z `DefaultEndpoints` a zajisti testem, že se nevrátí. Každý zbylý endpoint musí mít vyplněné ID, Name, Group a URL a ID se nesmí opakovat. README uprav podle toho.
+test_cmd: go test ./internal/checker -run '^(TestKnownDeadEndpointsStayRemoved|TestEveryEndpointHasTheFieldsTheFrontendNeeds)$'
+test_files:
+    - internal/checker/checker_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: holdout

@@ -1,0 +1,32 @@
+id: finetunegallery-img-download-001
+repo: lioilsources/FineTuneGallery
+commit: de38a944e44cbfd194ee4ae4ff3afb32ac3fc241
+fix: c696068480a8360b95c5809871942ee073261da8
+lang: go
+dir: server
+prompt: |
+    Na mobilu se obrázek z galerie nedá spolehlivě uložit: long-press „uložit obrázek“ je gesto prohlížeče, ne aplikace. Chci, aby `GET /img/{sha256}` (handleImg v server/imgutil.go) uměl obrázek nabídnout ke stažení.
+
+    Požadavky:
+    - bez parametru `download` se odpověď nemění a nemá hlavičku Content-Disposition,
+    - s `?download=1` vrátí stejný blob (200) a hlavičku přesně `attachment; filename="<jméno>"`,
+    - jméno posílá klient v `?name=…`; přidej `func downloadName(suggested, sha string) string`, která ho očistí tak, aby nešlo rozbít hlavičku:
+      - ponechá jen písmena a–z, A–Z, číslice a znaky `-`, `_`, `.`; mezera se změní na `-`, všechno ostatní se zahodí,
+      - z návrhu se vezme nejvýš 80 povolených znaků, na začátku i konci se ořežou znaky `.`, `-`, `_`,
+      - když nic nezbude, použije se `image-` + prvních 12 znaků sha,
+      - když jméno nekončí na `.png` (bez ohledu na velikost písmen), `.png` se připojí.
+    Příklady: `bez pripony` → `bez-pripony.png`, `../../etc/passwd` → `etcpasswd.png`, `ftg-7-aabbccdd.png` zůstane stejné. Cache hlavičky a Content-Type zůstávají.
+test_cmd: go test . -run '^(TestImgDownloadServesAttachment|TestDownloadNameCannotBreakTheHeader)$'
+test_files:
+    - server/imgutil_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

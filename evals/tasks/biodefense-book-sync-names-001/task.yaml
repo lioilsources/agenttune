@@ -1,0 +1,27 @@
+id: biodefense-book-sync-names-001
+repo: lioilsources/BioDefenseRogue
+commit: c4e57451119ef568eb49ecdc2417baa50836df76
+fix: fa57a1c4c5f2860e61eb711a606fda0fd4ed20a9
+lang: flutter
+dir: immunorun
+prompt: |
+    BookSync (immunorun/lib/book/validation/book_sync.dart, `validateBookSync`) hlásí chybu „název … natvrdo, použij {{lore.<id>}}“, kdykoli text kapitoly obsahuje název karty upgradu. U jednoslovných názvů jako „Histamin“ je to ale běžné slovo textu a kontrola tak hlásí falešné chyby.
+
+    Uprav kontrolu tak, aby:
+    - natvrdo napsaný název karty upgradu (`LoreKind.upgrade`) byl chybou jen u názvů, které obsahují závorku, např. „Pyrogen (IL-6)“ nebo „Fixture (X)“,
+    - kapitola s textem „Histamin roztáhne cévy.“ a upgradem s `nameCz: 'Histamin'` (uvedeným v `lore:` kapitoly) prošla bez jediné chyby,
+    - text uvnitř placeholderů `{{…}}` se dál nepočítal.
+    Ostatní pravidla BookSync (kapitola ↔ registr, kotvy, `[!doopravdy]`, placeholdery, release) a signatura `validateBookSync` zůstávají beze změny; komentář s pravidly na začátku souboru doplň.
+test_cmd: flutter test test/book_sync_test.dart
+test_files:
+    - immunorun/test/book_sync_test.dart
+timeout_s: 900
+rules:
+    - flutter-no-hardcoded-text
+    - flutter-no-logic-in-build
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-release-workflow-edit
+    - no-secrets-files
+split: dev

@@ -1,0 +1,30 @@
+id: aistack-lost-profile-001
+repo: lioilsources/AiStack
+commit: 2eb2f7ea4d79a2f5c384f909931f5fcf52dcb7fa
+fix: 505a3351f1d76f1c90c5dce9cea4538442184da3
+lang: go
+dir: services/spark-broker
+prompt: |
+    V spark-broker (services/spark-broker) broker v control režimu po nastavení profilu už nikdy nevolá jeho detect. Když profil spadne mimo broker (např. OOM guard zabije kontejner), broker dál hlásí starý profil a běžící úloha visí na mrtvé službě; nová úloha se pak spustí bez nahození profilu.
+
+    Uprav balíček internal/broker, aby broker v control režimu hlídal, že aktuální profil pořád běží:
+    - při Tick() nejvýš jednou za `Options.DetectEvery` pustí detect příkaz aktuálního profilu (jen když se zrovna nic neprovisionuje a profil detect má),
+    - jedno selhání detect se toleruje; až po dvou selháních za sebou broker profil zapomene (žádný aktuální profil ani addony),
+    - aktivní úlohy na něm vrátí do fronty: lease rovnou do Queued, run úlohy přes stávající drain (SIGTERM, po skončení procesu Queued),
+    - pošle uživateli upozornění, jehož text obsahuje „spadl mimo broker“,
+    - plánovač pak profil normálně nahodí znovu (up) a úlohu spustí znovu; když nahození selže, broker se pozastaví jako dosud.
+    Do `Options` přidej `NoProfileWatch bool`, které toto hlídání vypne (testy, které detect neřeší). Mimo control režim se nic nemění.
+test_cmd: go test ./internal/broker -run '^(TestLostProfileIsReprovisioned)$'
+test_files:
+    - services/spark-broker/internal/broker/broker_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: dev

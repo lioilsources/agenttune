@@ -1,0 +1,31 @@
+id: hajanek-sentence-takes-001
+repo: lioilsources/Hajanek
+commit: 7625da969e8c916fa2819c281eef9b9be1248f23
+fix: 9dc853f2fc2097066de52c73307ee6e7c48c42a5
+lang: go
+dir: forge
+prompt: |
+    První produkční render ve forge workeru spadl: chatterbox-cs často skončí po krátké první větě („Pomalu. Pramínek po pramínku.“ → 0,4 s), občas vrátí skoro tichý take a navíc ignoruje `speed`, takže klipy jsou moc rychlé. Jeden špatný klip pak shodí celý render.
+
+    Uprav forge/internal/worker (a co je k tomu potřeba v internal/config a internal/audio):
+    - Každá věta repliky je samostatný TTS take. Přidej v balíčku worker `sentences(s string) []string`: dělí za `.`, `?`, `!` nebo `…` (i když za nimi je `)`), jen když další slovo začíná velkým písmenem. Např. „Pomalu. Pramínek po pramínku.“ → 2 věty, „Nahoru… a dolů. Nahoru… a dolů.“ → 2 věty („Nahoru… a dolů.“), „Kdo je tam? Já.“ → 2, „Jsou tři, tři prasátka.“ → 1.
+    - `ttsText(s string) string` odstraní uvozovky („ “ ” " ‚ ‘) a sloučí mezery: `Dojdi za ní a pozvi ji k nám.“` → `Dojdi za ní a pozvi ji k nám.`, `„Kdo to je?“ zeptal se.` → `Kdo to je? zeptal se.`. Do TTS jde text po ttsText, klíč klipu zůstává podle textu skriptu.
+    - Engine dostává vždy `Speed: 1`; tempo podle tónu (`Prosody.Speed`, ořezané na 0.5–2.0) se aplikuje až při enkódování. Typ `Encoder` se mění na `func(parts []string, tempo float64, out string) (float64, error)` (všechny takes jedné repliky v pořadí) a `audio.EncodeClip` na `EncodeClip(parts []string, gapS, tempo float64, out string, o ClipOpts)` (takes spojené mezerou gapS, tempo přes atempo).
+    - Nový typ `Measurer func(path string) (durS, lufs float64, err error)` a pole `Worker.Measure` (nil = takes se nekontrolují). Take je špatný, když je hlasitost pod `MinTakeLUFS`, nebo je kratší než `MinSPerWord × počet slov` („truncated“), nebo delší než `MaxSPerWord × slov + 1,5 s` („too long“). Špatný take se opakuje s `TTSRequest.Seed` (nové pole `Seed *int`, json `seed,omitempty`): první pokus bez seedu, další se seedem 1, 2, … až `TakeAttempts` pokusů.
+    - Nová pole v `config.Worker` s výchozími hodnotami v `config.Default()`: `SentenceGapS` 0.35, `TakeAttempts` 3, `MinSPerWord` 0.24, `MaxSPerWord` 1.2, `MinTakeLUFS` -45 (a stejné klíče v config.yaml).
+    - Klip, který neprojde ani po všech pokusech, render přeskočí a pokračuje dalšími (ty se normálně nahrají). Na konci je job neúspěšný, neopakovatelný (`retry: false`), výsledek nese `done`/`total` a chyba obsahuje důvod prvního přeskočeného klipu (např. „truncated“). Opakovatelné chyby (5xx, síť, …) render dál ukončují hned jako dosud.
+    Přeskakování existujících klipů a duplicit se nemění.
+test_cmd: go test ./internal/worker -run '^(TestRenderSkipsExistingClips|TestSentences|TestRenderSplitsSentencesAndRedoesBadTakes|TestRenderSkipsHopelessClip)$'
+test_files:
+    - forge/internal/worker/worker_test.go
+timeout_s: 900
+rules:
+    - go-errors-wrap
+    - no-fmt-println
+    - go-test-no-time-now
+    - no-edit-migrations
+    - no-edit-generated
+    - no-new-deps
+    - tests-added
+    - no-secrets-files
+split: holdout

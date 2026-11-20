@@ -7,6 +7,7 @@ data/REVIEW.md
 data/config.private.yaml
 rules.md
 evals/results/
+bin/
 data/config.private.json
 # devconv:start
 .env
