@@ -2,7 +2,7 @@
 
 Evoluční smyčka pro lokální coding model na SPARKu: eval → data → LoRA trénink → eval → povýšení. Zadání: `DevConventions/Prompts/02-AGENTTUNE_PLAN.md`.
 
-**Privátní.** Obsahuje odvozeniny přepisů sessions. Surová data a modely nejsou v gitu (`.gitignore`).
+**Veřejné repo** (`docs/DECISIONS.md` R3). Přepisy sessions, jejich výňatky, surová data a modely do gitu nepatří (`.gitignore`).
 
 - `docs/DATA_INVENTORY.md` — kolik je dat a které repo se hodí na eval.
 - `docs/ENV.md` — co na SPARKu jede (zatím blokováno, chybí profil v brokeru).
