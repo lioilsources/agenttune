@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--sample", type=int, default=20)
     ap.add_argument("--max-calls", type=int, default=30, help="SFT: drop trajectories with more tool calls (0 = off)")
     ap.add_argument("--max-repeat", type=int, default=2, help="SFT: drop when one identical call repeats more often (0 = off)")
+    ap.add_argument("--no-rule-filter", action="store_true", help="SFT: keep trajectories that break an eval rule")
     a = ap.parse_args()
 
     priv = Path(a.private)
@@ -39,7 +40,8 @@ def main():
     cfg = build.Config(raw=a.raw, out=a.out, system_prompt=Path(a.system_prompt).read_text(),
                        private=json.loads(priv.read_text()), max_tokens=a.max_tokens,
                        eval_pct=a.eval_pct, cap_per_rule=a.cap_per_rule, sample=a.sample, tasks=a.tasks,
-                       max_calls=a.max_calls, max_repeat=a.max_repeat)
+                       max_calls=a.max_calls, max_repeat=a.max_repeat,
+                       rule_filter=not a.no_rule_filter)
     report = build.run(cfg)
     json.dump(report, sys.stdout, indent=1)
     print()
