@@ -359,3 +359,27 @@ class RuleCheck(unittest.TestCase):
                          "cd server && go get -u ./... && go test ./...")
         self.assertEqual(rules.violations([rej]), {"no-new-deps"})
         self.assertIsNone(dpo.mutate(call("bash", command="ls"), "no-new-deps"))
+
+
+class SynthGo(unittest.TestCase):
+    def test_hunk_to_pair(self):
+        import synth_go
+        patch = ("diff --git a/srv/a.go b/srv/a.go\n--- a/srv/a.go\n+++ b/srv/a.go\n@@ -1,5 +1,5 @@\n"
+                 " func f() error {\n \tb, err := os.ReadFile(p)\n \tif err != nil {\n"
+                 "-\t\treturn nil, err\n+\t\treturn nil, fmt.Errorf(\"read: %w\", err)\n \t}\n"
+                 "diff --git a/srv/a_test.go b/srv/a_test.go\n@@ -1 +1 @@\n-x\n+y\n")
+        hs = list(synth_go.hunks(patch))
+        self.assertEqual(len(hs), 1)
+        path, old, new = hs[0]
+        self.assertIn("return nil, err", old)
+        prompt, chosen, rej = synth_go.pair({"role": "system", "content": "s"}, "wrap errors", path, old, new)
+        self.assertEqual(rules.violations([chosen]), set())
+        self.assertEqual(rules.violations([rej]), {"go-errors-wrap"})
+        self.assertEqual(prompt[-1]["content"], old)
+
+    def test_new_file_is_write(self):
+        import synth_go
+        prompt, chosen, rej = synth_go.pair({"role": "system", "content": "s"}, "add", "a.go", "", GO_WRAPPED)
+        self.assertEqual(chosen["tool_calls"][0]["function"]["name"], "write")
+        self.assertEqual(len(prompt), 2)
+        self.assertEqual(rules.violations([rej]), {"go-errors-wrap"})

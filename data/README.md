@@ -84,11 +84,21 @@ Thinking bloky se zahazují.
 1. **Deterministické páry.** Chosen je skutečný tah, který pravidlo dodržel. Rejected je tentýž tah s porušeným pravidlem:
    - `git add -A` místo jmen souborů,
    - `git push --force`,
-   - `git commit --no-verify`.
+   - `git commit --no-verify`,
+   - holé `return err` místo `fmt.Errorf("…: %w", err)` v ne-testovém Go (`go-errors-wrap`),
+   - `go get -u ./...` nebo `flutter pub upgrade` před testem či buildem (`no-new-deps`).
 
    Liší se jen tím rozhodnutím. Na pravidlo nejvýš 400 párů, z jedné session nejvýš 15.
 2. **Odmítnutá volání.** Volání zastavil hook, bezpečnostní klasifikátor nebo vlastník. Rejected je skutečný tah, chosen vygeneruje `synth_dpo.py` podle důvodu odmítnutí.
 3. **Opravy v session** (`in-session-correction`), viz výše. Z jedné session nejvýš 15.
 4. **Jazyk.** Chosen je česká závěrečná odpověď, rejected její anglický přepis od modelu.
+
+5. **Go z historie rep** (`synth_go.py`). V přepisech skoro nejsou úpravy Go kódu, takže mutace `go-errors-wrap` nemá z čeho brát. Skript projde Go repa v dev rootu a z hunků commitů, které vracejí `fmt.Errorf("…: %w", err)`, udělá páry: chosen je skutečná úprava (edit, u nového souboru write), rejected totéž s holým `return err`. Bere jen páry, které by eval označil. Repa všech eval úloh (dev i holdout) a vyloučené projekty přeskočí celé, text jde přes stejný scrubber. Výstup `dpo_go.jsonl` a `dpo_go_eval.jsonl` se před tréninkem připojí k `dpo*.jsonl`.
+
+   ```
+   python3 data/synth_go.py --dev-root <složka s repy> --tasks evals/tasks --out data/out --private data/config.private.json
+   ```
+
+SFT trajektorie, která porušuje `go-errors-wrap` nebo `no-new-deps` (stejné kontroly jako eval, `agentdata/rules.py`), do SFT nejde. Vypnout jde přes `--no-rule-filter`.
 
 `synth_dpo.py` čte jen vyčištěné kandidáty a volá libovolný OpenAI-kompatibilní endpoint (vLLM na L40S). Odpověď, která neprojde kontrolou formátu, přeskočí a započítá, nehádá ji.
