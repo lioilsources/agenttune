@@ -13,7 +13,7 @@ import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from . import dpo, gitlabel, scrub, tools, transcripts
+from . import dpo, gitlabel, rules, scrub, tools, transcripts
 
 HEAD, TAIL = 1300, 600  # kept of a long tool result; ~2k chars with the marker
 
@@ -21,7 +21,7 @@ HEAD, TAIL = 1300, 600  # kept of a long tool result; ~2k chars with the marker
 class Config:
     def __init__(self, raw, out, system_prompt, private=None, max_tokens=16000,
                  eval_pct=5, cap_per_rule=400, cap_per_session=15, sample=20, tasks=None,
-                 max_calls=30, max_repeat=2):
+                 max_calls=30, max_repeat=2, rule_filter=True):
         self.raw = Path(raw)
         self.out = Path(out)
         self.system_prompt = system_prompt
@@ -34,6 +34,7 @@ class Config:
         self.tasks = tasks  # evals/tasks dir: fix commits and holdout repos
         self.max_calls = max_calls    # SFT: longer trajectories teach wandering (0 = no limit)
         self.max_repeat = max_repeat  # SFT: an identical call more often than this is a loop (0 = no limit)
+        self.rule_filter = rule_filter  # SFT: drop trajectories that break an eval rule (rules.py)
 
 
 def project_slug(dirname):
@@ -325,6 +326,10 @@ def run(cfg):
                 stats["sft_skip_corrected"] += 1
             elif loop := loop_reason(clean, cfg.max_calls, cfg.max_repeat):
                 stats[f"sft_skip_{loop}"] += 1
+            elif cfg.rule_filter and (broken := rules.violations(clean)):
+                for r in sorted(broken):
+                    stats[f"sft_skip_rule_{r}"] += 1
+                stats["sft_skip_rule"] += 1
             elif t > cfg.max_tokens:
                 stats["drop_too_long"] += 1
             else:
@@ -333,6 +338,9 @@ def run(cfg):
 
             # Deterministic pairs from the same, already scrubbed trajectory.
             for i, rule, rej in dpo.deterministic_pairs(clean):
+                if rules.violations([clean[i]]):
+                    stats["dpo_chosen_breaks_rule"] += 1
+                    continue
                 k = (meta["session"], rule)
                 if per_rule[rule] >= cfg.cap_per_rule or per_session_rule[k] >= cfg.cap_per_session:
                     stats[f"dpo_capped_{rule}"] += 1

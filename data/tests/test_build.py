@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agentdata import build, dpo, scrub, transcripts  # noqa: E402
+from agentdata import build, dpo, rules, scrub, transcripts  # noqa: E402
 import synth_dpo  # noqa: E402
 
 SESSION = "11111111-2222-3333-4444-555555555555"
@@ -322,3 +322,64 @@ class EscapedEmail(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def call(name, **args):
+    return {"role": "assistant", "content": "",
+            "tool_calls": [{"id": "c1", "type": "function",
+                            "function": {"name": name, "arguments": json.dumps(args)}}]}
+
+
+GO_WRAPPED = 'func f() error {\n\tb, err := os.ReadFile(p)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf("read: %w", err)\n\t}\n}\n'
+
+
+class RuleCheck(unittest.TestCase):
+    def test_go_errors_wrap(self):
+        bare = GO_WRAPPED.replace('fmt.Errorf("read: %w", err)', "err")
+        self.assertEqual(rules.violations([call("write", filePath="a.go", content=GO_WRAPPED)]), set())
+        self.assertEqual(rules.violations([call("write", filePath="a.go", content=bare)]), {"go-errors-wrap"})
+        self.assertEqual(rules.violations([call("write", filePath="a_test.go", content=bare)]), set())
+        local = bare.replace("os.ReadFile(p)", "readFile(p)")
+        self.assertEqual(rules.violations([call("edit", filePath="a.go", oldString="x", newString=local)]), set())
+
+    def test_no_new_deps(self):
+        self.assertEqual(rules.violations([call("bash", command="go get github.com/x/y")]), {"no-new-deps"})
+        self.assertEqual(rules.violations([call("bash", command="go test ./...")]), set())
+        mod = "require github.com/x/y v1.2.0\n"
+        self.assertEqual(rules.violations([call("edit", filePath="go.mod", oldString="a", newString=mod)]), {"no-new-deps"})
+        pub = "name: app\ndependencies:\n  http: ^1.0.0\n"
+        self.assertEqual(rules.violations([call("write", filePath="pubspec.yaml", content=pub)]), {"no-new-deps"})
+
+    def test_new_mutations(self):
+        rej = dpo.mutate(call("write", filePath="a.go", content=GO_WRAPPED), "go-errors-wrap")
+        self.assertEqual(rules.violations([rej]), {"go-errors-wrap"})
+        self.assertIsNone(dpo.mutate(call("write", filePath="a_test.go", content=GO_WRAPPED), "go-errors-wrap"))
+        rej = dpo.mutate(call("bash", command="cd server && go test ./..."), "no-new-deps")
+        self.assertEqual(json.loads(rej["tool_calls"][0]["function"]["arguments"])["command"],
+                         "cd server && go get -u ./... && go test ./...")
+        self.assertEqual(rules.violations([rej]), {"no-new-deps"})
+        self.assertIsNone(dpo.mutate(call("bash", command="ls"), "no-new-deps"))
+
+
+class SynthGo(unittest.TestCase):
+    def test_hunk_to_pair(self):
+        import synth_go
+        patch = ("diff --git a/srv/a.go b/srv/a.go\n--- a/srv/a.go\n+++ b/srv/a.go\n@@ -1,5 +1,5 @@\n"
+                 " func f() error {\n \tb, err := os.ReadFile(p)\n \tif err != nil {\n"
+                 "-\t\treturn nil, err\n+\t\treturn nil, fmt.Errorf(\"read: %w\", err)\n \t}\n"
+                 "diff --git a/srv/a_test.go b/srv/a_test.go\n@@ -1 +1 @@\n-x\n+y\n")
+        hs = list(synth_go.hunks(patch))
+        self.assertEqual(len(hs), 1)
+        path, old, new = hs[0]
+        self.assertIn("return nil, err", old)
+        prompt, chosen, rej = synth_go.pair({"role": "system", "content": "s"}, "wrap errors", path, old, new)
+        self.assertEqual(rules.violations([chosen]), set())
+        self.assertEqual(rules.violations([rej]), {"go-errors-wrap"})
+        self.assertEqual(prompt[-1]["content"], old)
+
+    def test_new_file_is_write(self):
+        import synth_go
+        prompt, chosen, rej = synth_go.pair({"role": "system", "content": "s"}, "add", "a.go", "", GO_WRAPPED)
+        self.assertEqual(chosen["tool_calls"][0]["function"]["name"], "write")
+        self.assertEqual(len(prompt), 2)
+        self.assertEqual(rules.violations([rej]), {"go-errors-wrap"})
